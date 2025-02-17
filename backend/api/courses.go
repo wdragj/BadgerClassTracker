@@ -1,30 +1,26 @@
-package handler
+package api
 
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
-
 	"github.com/corpix/uarand"
 	"github.com/go-resty/resty/v2"
 )
 
-// API URL for UW Madison Course Enrollment
+// API URL for UW Madison Enrollment
 const apiURL = "https://public.enroll.wisc.edu/api/search/v1"
 
-// Function to generate a random user-agent
+// Get a random user-agent
 func getRandomUserAgent() string {
 	return uarand.GetRandom()
 }
 
-// Vercel Serverless Function Handler
-func Handler(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query().Get("query")
-	if query == "" {
-		query = "*" // Default to fetching all courses
-	}
-
+// Fetch classes from the API
+func fetchCourses(query string) ([]map[string]interface{}, error) {
 	client := resty.New()
+
 	payload := map[string]interface{}{
 		"selectedTerm": "1254",
 		"queryString":  query,
@@ -47,7 +43,6 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		"sortOrder": "SCORE",
 	}
 
-	// Make API request
 	resp, err := client.R().
 		SetHeaders(map[string]string{
 			"Accept":       "application/json, text/plain, */*",
@@ -59,28 +54,49 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		SetBody(payload).
 		Post(apiURL)
 
-	if err != nil || resp.StatusCode() != http.StatusOK {
-		http.Error(w, "Failed to fetch courses", http.StatusInternalServerError)
-		return
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode() != http.StatusOK {
+		return nil, fmt.Errorf("API request failed with status: %d", resp.StatusCode())
 	}
 
 	var result map[string]interface{}
-	if err := json.Unmarshal(resp.Body(), &result); err != nil {
-		http.Error(w, "Failed to parse response", http.StatusInternalServerError)
-		return
+	err = json.Unmarshal(resp.Body(), &result)
+	if err != nil {
+		return nil, err
 	}
 
-	hits, _ := result["hits"].([]interface{})
-	var courses []map[string]interface{}
+	hits, ok := result["hits"].([]interface{})
+	if !ok || len(hits) == 0 {
+		return nil, nil
+	}
+
+	// Convert response to JSON
+	courses := []map[string]interface{}{}
 	for _, h := range hits {
 		hit, _ := h.(map[string]interface{})
-		courses = append(courses, map[string]interface{}{
-			"termCode":     hit["termCode"],
-			"subject":      hit["subject"].(map[string]interface{})["shortDescription"],
-			"title":        hit["title"],
-			"credits":      hit["creditRange"],
-			"status":       hit["packageEnrollmentStatus"].(map[string]interface{})["status"],
-		})
+		courses = append(courses, hit)
+	}
+
+	return courses, nil
+}
+
+// 📌 **Handler for /api/courses**
+func Handler(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("query")
+
+	// Default to "*" if no query is provided
+	if query == "" {
+		query = "*"
+	}
+
+	courses, err := fetchCourses(query)
+	if err != nil {
+		http.Error(w, "Failed to fetch courses", http.StatusInternalServerError)
+		log.Println("Error:", err)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
