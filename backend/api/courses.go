@@ -92,6 +92,16 @@ func fetchCourses(query string) (map[string]interface{}, error) {
 
 // 📌 **Handler for /api/courses**
 func Handler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*") // Allows requests from any origin
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	// Handle preflight request
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	query := r.URL.Query().Get("query")
 
 	// Default to "*" if no query is provided
