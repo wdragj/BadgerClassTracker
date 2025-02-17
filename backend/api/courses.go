@@ -18,7 +18,7 @@ func getRandomUserAgent() string {
 }
 
 // Fetch classes from the API
-func fetchCourses(query string) ([]map[string]interface{}, error) {
+func fetchCourses(query string) (map[string]interface{}, error) {
 	client := resty.New()
 
 	payload := map[string]interface{}{
@@ -62,25 +62,32 @@ func fetchCourses(query string) ([]map[string]interface{}, error) {
 		return nil, fmt.Errorf("API request failed with status: %d", resp.StatusCode())
 	}
 
+	// var result map[string]interface{}
+	// err = json.Unmarshal(resp.Body(), &result)
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	// hits, ok := result["hits"].([]interface{})
+	// if !ok || len(hits) == 0 {
+	// 	return nil, nil
+	// }
+
+	// // Convert response to JSON
+	// courses := []map[string]interface{}{}
+	// for _, h := range hits {
+	// 	hit, _ := h.(map[string]interface{})
+	// 	courses = append(courses, hit)
+	// }
+
+	// return courses, nil
 	var result map[string]interface{}
 	err = json.Unmarshal(resp.Body(), &result)
 	if err != nil {
 		return nil, err
 	}
 
-	hits, ok := result["hits"].([]interface{})
-	if !ok || len(hits) == 0 {
-		return nil, nil
-	}
-
-	// Convert response to JSON
-	courses := []map[string]interface{}{}
-	for _, h := range hits {
-		hit, _ := h.(map[string]interface{})
-		courses = append(courses, hit)
-	}
-
-	return courses, nil
+	return result, nil
 }
 
 // 📌 **Handler for /api/courses**
