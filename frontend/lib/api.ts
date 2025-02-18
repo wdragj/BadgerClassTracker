@@ -1,16 +1,12 @@
 /* eslint-disable no-console */
 export async function fetchCourses(page: number = 1, pageSize: number = 50, query: string = "*") {
     try {
-        const response = await fetch(
-            `https://badger-class-tracker-backend.vercel.app/api/courses?page=${page}&pageSize=${pageSize}&query=${query}`,
-            // `http://localhost:8000/api/courses?page=${page}&pageSize=${pageSize}&query=${query}`,
-            {
-                method: "GET",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-            }
-        );
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/courses?page=${page}&pageSize=${pageSize}&query=${encodeURIComponent(query)}`, {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json",
+            },
+        });
 
         if (!response.ok) {
             console.error(`❌ API request failed with status: ${response.status}`);
