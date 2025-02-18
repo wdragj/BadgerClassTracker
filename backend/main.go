@@ -3,11 +3,11 @@ package main
 import (
 	"log"
 	"net/http"
-	"backend/api" // ✅ Import the API package
+	"backend/api" 
 )
 
 func main() {
-	// Define API routes
+	// API routes
 	http.HandleFunc("/api/courses", api.Handler)
 
 	port := ":8000"
