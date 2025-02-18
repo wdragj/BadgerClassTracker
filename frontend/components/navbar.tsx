@@ -1,6 +1,8 @@
 import { Navbar as HeroUINavbar, NavbarContent, NavbarMenu, NavbarMenuToggle, NavbarBrand, NavbarItem, NavbarMenuItem } from "@heroui/navbar";
 import { Link } from "@heroui/link";
 import { link as linkStyles } from "@heroui/theme";
+
+import SignIn from "@/components/sign-in";
 import NextLink from "next/link";
 import clsx from "clsx";
 
@@ -39,6 +41,9 @@ export const Navbar = () => {
             <NavbarContent className="hidden sm:flex basis-1/5 sm:basis-full" justify="end">
                 <NavbarItem className="hidden sm:flex gap-2">
                     <ThemeSwitch />
+                </NavbarItem>
+                <NavbarItem>
+                    <SignIn />
                 </NavbarItem>
             </NavbarContent>
 
