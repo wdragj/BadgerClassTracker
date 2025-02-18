@@ -2,8 +2,8 @@
 export async function fetchCourses(page: number = 1, pageSize: number = 50, query: string = "*") {
     try {
         const response = await fetch(
-            // `https://badger-class-tracker-backend.vercel.app/api/courses?page=${page}&pageSize=${pageSize}&query=${query}`,
-            `http://localhost:8000/api/courses?page=${page}&pageSize=${pageSize}&query=${query}`,
+            `https://badger-class-tracker-backend.vercel.app/api/courses?page=${page}&pageSize=${pageSize}&query=${query}`,
+            // `http://localhost:8000/api/courses?page=${page}&pageSize=${pageSize}&query=${query}`,
             {
                 method: "GET",
                 headers: {
