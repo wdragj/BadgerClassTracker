@@ -1,4 +1,4 @@
-package api
+package courses
 
 import (
 	"encoding/json"

@@ -1,0 +1,38 @@
+# Binaries for programs and plugins
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Binaries
+bin/
+build/
+
+# Test binaries
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Vendor directory (when using Go modules)
+vendor/
+
+# Logs, patch, and session files
+*.log
+*.patch
+*.session
+*.orig
+*.swp
+
+# IDE / Editor settings
+.idea/
+.vscode/
+*.iml
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Env files (secrets, local config)
+.env
+.env.*
