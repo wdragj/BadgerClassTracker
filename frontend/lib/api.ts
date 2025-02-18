@@ -1,17 +1,21 @@
 /* eslint-disable no-console */
-export async function fetchCourses(query: string = "*") {
+export async function fetchCourses(page: number = 1, pageSize: number = 50, query: string = "*") {
     try {
-        const response = await fetch(`https://badger-class-tracker-backend.vercel.app/api/courses`, {
-            method: "GET",
-            headers: {
-                "Content-Type": "application/json",
-            },
-        });
+        const response = await fetch(
+            // `https://badger-class-tracker-backend.vercel.app/api/courses?page=${page}&pageSize=${pageSize}&query=${query}`,
+            `http://localhost:8000/api/courses?page=${page}&pageSize=${pageSize}&query=${query}`,
+            {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+            }
+        );
 
         if (!response.ok) {
             console.error(`❌ API request failed with status: ${response.status}`);
 
-            return [];
+            return { hits: [], found: 0 };
         }
 
         const data = await response.json();
@@ -19,25 +23,29 @@ export async function fetchCourses(query: string = "*") {
         if (!data.hits) {
             console.warn("⚠️ No courses found.");
 
-            return [];
+            return { hits: [], found: 0 };
         }
 
-        return data.hits.map((course: any) => ({
-            id: course.courseId,
-            name: course.courseDesignation, // e.g., "COMP SCI 403"
-            fullname: course.fullCourseDesignation, // e.g., "COMPUTER SCIENCES 403"
-            title: course.title, // e.g., "INTRODUCTION TO COMPUTER SCIENCE II"
-            subject: course.subject.shortDescription, // e.g., "COMP SCI"
-            termCode: course.subject.termCode, // e.g., "1254"
-            credits: course.creditRange, // e.g., "1"
-            description: course.description, // Course description
-            enrollmentPrerequisites: course.enrollmentPrerequisites || "None",
-            typicallyOffered: course.typicallyOffered || "N/A",
-            repeatable: course.repeatable === "Y" ? "Yes" : "No",
-        }));
+        return {
+            hits: data.hits.map((course: any) => ({
+                id: course.courseId,
+                name: course.courseDesignation,
+                fullname: course.fullCourseDesignation,
+                title: course.title,
+                subject: course.subject.shortDescription,
+                subjectCode: course.subject.subjectCode,
+                termCode: course.subject.termCode,
+                credits: course.creditRange,
+                description: course.description,
+                enrollmentPrerequisites: course.enrollmentPrerequisites || "None",
+                typicallyOffered: course.typicallyOffered || "N/A",
+                repeatable: course.repeatable === "Y" ? "Yes" : "No",
+            })),
+            found: data.found,
+        };
     } catch (error) {
         console.error("❌ Error fetching courses:", error);
 
-        return [];
+        return { hits: [], found: 0 };
     }
 }
