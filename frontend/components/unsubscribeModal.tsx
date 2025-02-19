@@ -5,26 +5,24 @@ import type { Course } from "@/app/page";
 import React from "react";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button } from "@heroui/react";
 
-interface SubscribeModalProps {
+interface UnsubscribeModalProps {
     isOpen: boolean;
     course: Course;
     onClose: () => void;
-    onSubscribe: (course: Course) => void;
+    onUnsubscribe: (course: Course) => void;
 }
 
-export default function SubscribeModal({ isOpen, course, onClose, onSubscribe }: SubscribeModalProps) {
+export default function UnsubscribeModal({ isOpen, course, onClose, onUnsubscribe }: UnsubscribeModalProps) {
     return (
         <Modal isOpen={isOpen} placement="center" size="xs" onClose={onClose}>
             <ModalContent>
                 {(close) => (
                     <>
-                        <ModalHeader>Subscribe</ModalHeader>
+                        <ModalHeader>Unsubscribe</ModalHeader>
                         <ModalBody>
                             <p>
-                                Are you sure you want to subscribe to <strong>{course.name}</strong>?
+                                Are you sure you want to unsubscribe from <strong>{course.name}</strong>?
                             </p>
-                            {/* <p>Title: {course.title}</p>
-                            <p>Credits: {course.credits}</p> */}
                         </ModalBody>
                         <ModalFooter>
                             <Button color="danger" variant="flat" onPress={close}>
@@ -35,11 +33,11 @@ export default function SubscribeModal({ isOpen, course, onClose, onSubscribe }:
                                 color="primary"
                                 variant="flat"
                                 onPress={() => {
-                                    onSubscribe(course);
+                                    onUnsubscribe(course);
                                     close();
                                 }}
                             >
-                                Subscribe
+                                Unsubscribe
                             </Button>
                         </ModalFooter>
                     </>

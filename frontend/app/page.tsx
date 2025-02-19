@@ -3,10 +3,14 @@
 import React, { useState } from "react";
 import { Card, CardBody, Button, Pagination, Spinner, Input } from "@heroui/react";
 import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
+import NotificationsOffIcon from "@mui/icons-material/NotificationsOff";
 import useSWR from "swr";
 import { useDisclosure } from "@heroui/react";
+import { useSession } from "next-auth/react";
+
 import { fetchCourses } from "@/lib/api";
 import SubscribeModal from "@/components/subscribeModal";
+import UnsubscribeModal from "@/components/unsubscribeModal";
 
 // Define your Course interface (adjust as needed)
 export interface Course {
@@ -17,13 +21,23 @@ export interface Course {
     credits: number;
 }
 
+// Define your Subscription interface (as returned by your backend)
+interface Subscription {
+    courseId: string;
+    courseSubjectCode: string;
+}
+
 export default function CoursesPage() {
+    const { data: session, status } = useSession();
+    const isAuthenticated = status === "authenticated";
     const [page, setPage] = useState(1);
     const [searchQuery, setSearchQuery] = useState(""); // user input
     const [submittedQuery, setSubmittedQuery] = useState(""); // actual query used for fetching
     const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
 
-    const { isOpen, onOpen, onClose } = useDisclosure(); // HeroUI hook for modal state
+    // useDisclosure for subscribe and unsubscribe modals
+    const { isOpen: isSubscribeOpen, onOpen: onSubscribeOpen, onClose: onSubscribeClose } = useDisclosure();
+    const { isOpen: isUnsubscribeOpen, onOpen: onUnsubscribeOpen, onClose: onUnsubscribeClose } = useDisclosure();
 
     const rowsPerPage = 50;
 
@@ -32,6 +46,13 @@ export default function CoursesPage() {
         ["courses", page, rowsPerPage, submittedQuery],
         () => fetchCourses(page, rowsPerPage, submittedQuery),
         { keepPreviousData: true }
+    );
+
+    // If authenticated, fetch subscriptions for the current user
+    const { data: subsData, mutate: mutateSubscriptions } = useSWR<{ subscriptions: Subscription[] }>(
+        isAuthenticated && session?.user?.email ? [`subscriptions`, session.user.email] : null,
+        () => fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/subscriptions?userEmail=${session?.user?.email}`).then((res) => res.json()),
+        { refreshInterval: 60000 }
     );
 
     const paginatedData = data?.hits || [];
@@ -48,22 +69,96 @@ export default function CoursesPage() {
         }
     };
 
-    // When the notification icon is clicked, open the modal
+    // When the notification icon is clicked for subscribing, open the subscribe modal
     const handleSubscribeClick = (course: Course) => {
         setSelectedCourse(course);
-        onOpen(); // open modal using useDisclosure
+        onSubscribeOpen();
     };
 
-    // Handle subscription logic
-    const handleSubscribe = (course: Course) => {
-        console.log("Subscribing to course:", course);
-        // Insert your subscription logic here (e.g., API call)
-        // After subscribing, you might refresh data or show a success message.
+    // When the notification icon is clicked for unsubscribing, open the unsubscribe modal
+    const handleUnsubscribeClick = (course: Course) => {
+        setSelectedCourse(course);
+        onUnsubscribeOpen();
+    };
+
+    // Handle subscribe logic
+    const handleSubscribe = async (course: Course) => {
+        if (!session?.user?.email || !session?.user?.name) {
+            console.error("User is not authenticated properly");
+
+            return;
+        }
+        const payload = {
+            userEmail: session.user.email,
+            userFullName: session.user.name,
+            courseId: course.id,
+            courseName: course.name,
+            courseSubjectCode: course.subjectCode,
+            // courseStatus is omitted; backend will default it to "open"
+        };
+
+        try {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/subscribe`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                console.error("Subscription failed:", response.status);
+            } else {
+                console.log("Subscription successful");
+                // Revalidate subscriptions so UI updates immediately
+                mutateSubscriptions();
+            }
+        } catch (error) {
+            console.error("Error during subscription:", error);
+        }
+    };
+
+    // Handle unsubscribe logic
+    const handleUnsubscribe = async (course: Course) => {
+        if (!session?.user?.email) {
+            console.error("User is not authenticated properly");
+
+            return;
+        }
+        const payload = {
+            userEmail: session.user.email,
+            courseId: course.id,
+            courseSubjectCode: course.subjectCode,
+        };
+
+        try {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/unsubscribe`, {
+                method: "POST", // Or DELETE if your endpoint supports it
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                console.error("Unsubscription failed:", response.status);
+            } else {
+                console.log("Unsubscription successful");
+                // Revalidate subscriptions so UI updates immediately
+                mutateSubscriptions();
+            }
+        } catch (error) {
+            console.error("Error during unsubscription:", error);
+        }
+    };
+
+    // Check if a course is subscribed
+    const isCourseSubscribed = (course: Course): boolean => {
+        if (!subsData?.subscriptions) return false;
+
+        return subsData.subscriptions.some((sub) => sub.courseId === course.id && sub.courseSubjectCode === course.subjectCode);
     };
 
     return (
         <div className="relative min-h-screen">
-            <div className="sticky top-16 z-10 flex justify-between items-center px-3 py-1 w-full bg-background">
+            {/* Sticky top search bar */}
+            <div className="sticky top-16 z-10 flex justify-between items-center px-3 py-1 w-full bg-background shadow-sm">
                 <div className="flex flex-col justify-start text-left">
                     <p className="text-sm text-gray-600">Total Results: {totalResults}</p>
                 </div>
@@ -86,48 +181,72 @@ export default function CoursesPage() {
                     <Spinner label="Loading..." />
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {paginatedData.map((course) => (
-                        <Card key={course.id + course.subjectCode} className="border-b border-gray-200" radius="none" shadow="none">
-                            <CardBody>
-                                <div className="flex justify-between items-center w-full">
-                                    <h2 className="text-lg font-semibold">{course.name}</h2>
-                                    <span className="text-sm font-semibold">{course.credits} Credit</span>
-                                </div>
-                                <div className="flex justify-between items-center w-full">
-                                    <p className="text-sm text-gray-600">{course.title}</p>
-                                    <Button
-                                        isIconOnly
-                                        color="warning"
-                                        radius="full"
-                                        size="sm"
-                                        variant="flat"
-                                        onPress={() => handleSubscribeClick(course)}
-                                    >
-                                        <NotificationsNoneIcon fontSize="small" />
-                                    </Button>
-                                </div>
-                            </CardBody>
-                        </Card>
-                    ))}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-4">
+                    {paginatedData.map((course) => {
+                        const subscribed = isCourseSubscribed(course);
+
+                        return (
+                            <Card key={course.id + course.subjectCode} className="border-b border-gray-200" radius="none" shadow="none">
+                                <CardBody>
+                                    <div className="flex justify-between items-center w-full">
+                                        <h2 className="text-lg font-semibold">{course.name}</h2>
+                                        <span className="text-sm font-semibold">{course.credits} Credit</span>
+                                    </div>
+                                    <div className="flex justify-between items-center w-full">
+                                        <p className="text-sm text-gray-600">{course.title}</p>
+                                        <Button
+                                            isIconOnly
+                                            color={subscribed ? "danger" : "success"}
+                                            radius="full"
+                                            size="sm"
+                                            variant="flat"
+                                            onPress={() => {
+                                                if (subscribed) {
+                                                    handleUnsubscribeClick(course);
+                                                } else {
+                                                    handleSubscribeClick(course);
+                                                }
+                                            }}
+                                        >
+                                            {subscribed ? <NotificationsOffIcon fontSize="small" /> : <NotificationsNoneIcon fontSize="small" />}
+                                        </Button>
+                                    </div>
+                                </CardBody>
+                            </Card>
+                        );
+                    })}
                 </div>
             )}
 
             {pages > 0 && (
-                <div className="sticky bottom-0 z-10 w-full py-3 flex justify-center bg-background">
+                <div className="sticky bottom-0 z-10 w-full pt-3 pb-6 flex justify-center bg-background">
                     <Pagination isCompact showControls showShadow color="danger" page={page} total={pages} onChange={(newPage) => setPage(newPage)} />
                 </div>
             )}
 
-            {selectedCourse && (
+            {/* Render the SubscribeModal if a course is selected and not subscribed */}
+            {selectedCourse && !isCourseSubscribed(selectedCourse) && (
                 <SubscribeModal
-                    isOpen={isOpen}
                     course={selectedCourse}
+                    isOpen={isSubscribeOpen}
                     onClose={() => {
-                        onClose();
+                        onSubscribeClose();
                         setSelectedCourse(null);
                     }}
                     onSubscribe={handleSubscribe}
+                />
+            )}
+
+            {/* Render the UnsubscribeModal if a course is selected and is subscribed */}
+            {selectedCourse && isCourseSubscribed(selectedCourse) && (
+                <UnsubscribeModal
+                    course={selectedCourse}
+                    isOpen={isUnsubscribeOpen}
+                    onClose={() => {
+                        onUnsubscribeClose();
+                        setSelectedCourse(null);
+                    }}
+                    onUnsubscribe={handleUnsubscribe}
                 />
             )}
         </div>
