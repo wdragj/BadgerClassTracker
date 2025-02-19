@@ -4,11 +4,12 @@ import React, { useState } from "react";
 import { Card, CardBody, Button, Pagination, Spinner, Input } from "@heroui/react";
 import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
 import useSWR from "swr";
-
+import { useDisclosure } from "@heroui/react";
 import { fetchCourses } from "@/lib/api";
+import SubscribeModal from "@/components/subscribeModal";
 
-// Course object
-interface Course {
+// Define your Course interface (adjust as needed)
+export interface Course {
     id: string;
     subjectCode: string;
     name: string;
@@ -18,12 +19,15 @@ interface Course {
 
 export default function CoursesPage() {
     const [page, setPage] = useState(1);
-    const [searchQuery, setSearchQuery] = useState(""); // User input
-    const [submittedQuery, setSubmittedQuery] = useState(""); // Actual query for fetching
+    const [searchQuery, setSearchQuery] = useState(""); // user input
+    const [submittedQuery, setSubmittedQuery] = useState(""); // actual query used for fetching
+    const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+
+    const { isOpen, onOpen, onClose } = useDisclosure(); // HeroUI hook for modal state
 
     const rowsPerPage = 50;
 
-    // Fetch courses using submitted search query
+    // Fetch courses using SWR
     const { data, isLoading, mutate } = useSWR<{ hits: Course[]; found: number }>(
         ["courses", page, rowsPerPage, submittedQuery],
         () => fetchCourses(page, rowsPerPage, submittedQuery),
@@ -38,20 +42,31 @@ export default function CoursesPage() {
     // Handle search submission
     const handleSearchSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === "Enter") {
-            setSubmittedQuery(searchQuery); // Set query for fetching
-            setPage(1); // Reset to first page on new search
-            mutate(); // Manually trigger fetch
+            setSubmittedQuery(searchQuery);
+            setPage(1);
+            mutate();
         }
+    };
+
+    // When the notification icon is clicked, open the modal
+    const handleSubscribeClick = (course: Course) => {
+        setSelectedCourse(course);
+        onOpen(); // open modal using useDisclosure
+    };
+
+    // Handle subscription logic
+    const handleSubscribe = (course: Course) => {
+        console.log("Subscribing to course:", course);
+        // Insert your subscription logic here (e.g., API call)
+        // After subscribing, you might refresh data or show a success message.
     };
 
     return (
         <div>
-            <div className="sticky top-0 z-10 flex justify-between items-center px-3 w-full bg-background shadow-sm">
+            <div className="sticky top-0 z-10 flex justify-between items-center px-3 pb-1 w-full bg-background shadow-sm">
                 <div className="flex flex-col justify-start text-left">
-                    <h1 className="text-lg font-bold mb-1">Courses</h1>
-                    <p className="mb-2 text-sm text-gray-600">Total Results: {totalResults}</p>
+                    <p className="text-sm text-gray-600">Total Results: {totalResults}</p>
                 </div>
-
                 <div className="w-64">
                     <Input
                         isClearable
@@ -59,29 +74,36 @@ export default function CoursesPage() {
                         placeholder="Search courses..."
                         value={searchQuery}
                         variant="bordered"
-                        onChange={(e) => setSearchQuery(e.target.value)} // Update input
-                        onClear={() => setSearchQuery("")} // Clear input
-                        onKeyDown={handleSearchSubmit} // Fetch on Enter
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onClear={() => setSearchQuery("")}
+                        onKeyDown={handleSearchSubmit}
                     />
                 </div>
             </div>
+
             {loadingState === "loading" ? (
                 <div className="flex justify-center items-center w-full">
                     <Spinner label="Loading..." />
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                    {paginatedData.map((course: Course) => (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {paginatedData.map((course) => (
                         <Card key={course.id + course.subjectCode} className="border-b border-gray-200" radius="none" shadow="none">
                             <CardBody>
                                 <div className="flex justify-between items-center w-full">
                                     <h2 className="text-lg font-semibold">{course.name}</h2>
                                     <span className="text-sm font-semibold">{course.credits} Credit</span>
                                 </div>
-
                                 <div className="flex justify-between items-center w-full">
                                     <p className="text-sm text-gray-600">{course.title}</p>
-                                    <Button isIconOnly color="warning" radius="full" size="sm" variant="flat">
+                                    <Button
+                                        isIconOnly
+                                        color="warning"
+                                        radius="full"
+                                        size="sm"
+                                        variant="flat"
+                                        onPress={() => handleSubscribeClick(course)}
+                                    >
                                         <NotificationsNoneIcon fontSize="small" />
                                     </Button>
                                 </div>
@@ -90,10 +112,23 @@ export default function CoursesPage() {
                     ))}
                 </div>
             )}
+
             {pages > 0 && (
                 <div className="sticky bottom-0 w-full py-1 flex justify-center">
                     <Pagination isCompact showControls showShadow color="danger" page={page} total={pages} onChange={(newPage) => setPage(newPage)} />
                 </div>
+            )}
+
+            {selectedCourse && (
+                <SubscribeModal
+                    isOpen={isOpen}
+                    course={selectedCourse}
+                    onClose={() => {
+                        onClose();
+                        setSelectedCourse(null);
+                    }}
+                    onSubscribe={handleSubscribe}
+                />
             )}
         </div>
     );

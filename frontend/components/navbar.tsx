@@ -6,8 +6,8 @@ import { useSession } from "next-auth/react";
 import NextLink from "next/link";
 import clsx from "clsx";
 
-import SignInButton from "./sign-in-button";
-import UserProfile from "./user-profile";
+import SignInButton from "./signInButton";
+import UserProfile from "./userProfile";
 
 import { siteConfig } from "@/config/site";
 import { ThemeSwitch } from "@/components/theme-switch";
