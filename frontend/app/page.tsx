@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { Card, CardBody, Button, Pagination, Spinner, Input } from "@heroui/react";
+import React, { useEffect, useState } from "react";
+import { Card, CardBody, Button, Pagination, Spinner, Input, Alert } from "@heroui/react";
 import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
 import NotificationsOffIcon from "@mui/icons-material/NotificationsOff";
 import useSWR from "swr";
@@ -34,6 +34,12 @@ export default function CoursesPage() {
     const [searchQuery, setSearchQuery] = useState(""); // user input
     const [submittedQuery, setSubmittedQuery] = useState(""); // actual query used for fetching
     const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+
+    // Alert state for subscription notifications
+    const [alertVisible, setAlertVisible] = useState(false);
+    const [alertTitle, setAlertTitle] = useState("");
+    const [alertDescription, setAlertDescription] = useState("");
+    const [alertColor, setAlertColor] = useState<"success" | "danger" | "default" | "primary" | "secondary" | "warning">("success");
 
     // useDisclosure for subscribe and unsubscribe modals
     const { isOpen: isSubscribeOpen, onOpen: onSubscribeOpen, onClose: onSubscribeClose } = useDisclosure();
@@ -84,6 +90,7 @@ export default function CoursesPage() {
     // Handle subscribe logic
     const handleSubscribe = async (course: Course) => {
         if (!session?.user?.email || !session?.user?.name) {
+            // eslint-disable-next-line no-console
             console.error("User is not authenticated properly");
 
             return;
@@ -105,13 +112,21 @@ export default function CoursesPage() {
             });
 
             if (!response.ok) {
+                // eslint-disable-next-line no-console
                 console.error("Subscription failed:", response.status);
             } else {
+                // eslint-disable-next-line no-console
                 console.log("Subscription successful");
                 // Revalidate subscriptions so UI updates immediately
                 mutateSubscriptions();
+                // Show success alert
+                setAlertTitle("Subscription Successful");
+                setAlertDescription(`You have subscribed to ${course.name}.`);
+                setAlertColor("success");
+                setAlertVisible(true);
             }
         } catch (error) {
+            // eslint-disable-next-line no-console
             console.error("Error during subscription:", error);
         }
     };
@@ -119,6 +134,7 @@ export default function CoursesPage() {
     // Handle unsubscribe logic
     const handleUnsubscribe = async (course: Course) => {
         if (!session?.user?.email) {
+            // eslint-disable-next-line no-console
             console.error("User is not authenticated properly");
 
             return;
@@ -137,13 +153,21 @@ export default function CoursesPage() {
             });
 
             if (!response.ok) {
+                // eslint-disable-next-line no-console
                 console.error("Unsubscription failed:", response.status);
             } else {
+                // eslint-disable-next-line no-console
                 console.log("Unsubscription successful");
                 // Revalidate subscriptions so UI updates immediately
                 mutateSubscriptions();
+                // Show alert for unsubscription
+                setAlertTitle("Unsubscription Successful");
+                setAlertDescription(`You have unsubscribed from ${course.name}.`);
+                setAlertColor("success");
+                setAlertVisible(true);
             }
         } catch (error) {
+            // eslint-disable-next-line no-console
             console.error("Error during unsubscription:", error);
         }
     };
@@ -155,8 +179,34 @@ export default function CoursesPage() {
         return subsData.subscriptions.some((sub) => sub.courseId === course.id && sub.courseSubjectCode === course.subjectCode);
     };
 
+    // When isVisible is true, set a timeout to hide it after 3 seconds
+    useEffect(() => {
+        if (alertVisible) {
+            const timer = setTimeout(() => {
+                setAlertVisible(false);
+            }, 3000); // 3 seconds
+
+            // Cleanup the timer if the component unmounts or isVisible changes
+            return () => clearTimeout(timer);
+        }
+    }, [alertVisible]);
+
     return (
         <div className="relative min-h-screen">
+            {/* Optional Alert */}
+            {alertVisible && (
+                <div className="fixed bottom-32 left-0 right-0 z-50 mx-auto max-w-7xl">
+                    <Alert
+                        color={alertColor}
+                        description={alertDescription}
+                        isVisible={alertVisible}
+                        title={alertTitle}
+                        variant="faded"
+                        onClose={() => setAlertVisible(false)}
+                    />
+                </div>
+            )}
+
             {/* Sticky top search bar */}
             <div className="sticky top-16 z-10 flex justify-between items-center px-3 py-1 w-full bg-background shadow-sm">
                 <div className="flex flex-col justify-start text-left">
@@ -196,11 +246,20 @@ export default function CoursesPage() {
                                         <p className="text-sm text-gray-600">{course.title}</p>
                                         <Button
                                             isIconOnly
-                                            color={subscribed ? "danger" : "success"}
+                                            color={isAuthenticated ? (subscribed ? "danger" : "success") : "success"}
                                             radius="full"
                                             size="sm"
                                             variant="flat"
                                             onPress={() => {
+                                                if (!isAuthenticated) {
+                                                    // Instead of window.alert, we trigger the HeroUI Alert
+                                                    setAlertTitle("Sign In Required");
+                                                    setAlertDescription("Please sign in to subscribe.");
+                                                    setAlertColor("danger");
+                                                    setAlertVisible(true);
+
+                                                    return;
+                                                }
                                                 if (subscribed) {
                                                     handleUnsubscribeClick(course);
                                                 } else {
@@ -208,7 +267,11 @@ export default function CoursesPage() {
                                                 }
                                             }}
                                         >
-                                            {subscribed ? <NotificationsOffIcon fontSize="small" /> : <NotificationsNoneIcon fontSize="small" />}
+                                            {isAuthenticated && subscribed ? (
+                                                <NotificationsOffIcon fontSize="small" />
+                                            ) : (
+                                                <NotificationsNoneIcon fontSize="small" />
+                                            )}
                                         </Button>
                                     </div>
                                 </CardBody>
