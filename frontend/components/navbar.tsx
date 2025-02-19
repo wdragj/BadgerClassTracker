@@ -1,16 +1,23 @@
-import { Navbar as HeroUINavbar, NavbarContent, NavbarMenu, NavbarMenuToggle, NavbarBrand, NavbarItem, NavbarMenuItem } from "@heroui/navbar";
-import { Link } from "@heroui/link";
-import { link as linkStyles } from "@heroui/theme";
+"use client";
 
-import SignIn from "@/components/sign-in";
+import { Navbar as HeroUINavbar, NavbarContent, NavbarBrand, NavbarItem } from "@heroui/navbar";
+import { link as linkStyles } from "@heroui/theme";
+import { useSession } from "next-auth/react";
 import NextLink from "next/link";
 import clsx from "clsx";
+
+import SignInButton from "./sign-in-button";
+import UserProfile from "./user-profile";
 
 import { siteConfig } from "@/config/site";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { Logo } from "@/components/icons";
 
+
 export const Navbar = () => {
+    const { data: session, status } = useSession();
+    const isAuthenticated = status === "authenticated";
+
     return (
         <HeroUINavbar maxWidth="xl" position="sticky">
             <NavbarContent className="basis-1/5 sm:basis-full" justify="start">
@@ -42,17 +49,15 @@ export const Navbar = () => {
                 <NavbarItem className="hidden sm:flex gap-2">
                     <ThemeSwitch />
                 </NavbarItem>
-                <NavbarItem>
-                    <SignIn />
-                </NavbarItem>
+                <NavbarItem>{isAuthenticated ? <UserProfile session={session} /> : <SignInButton />}</NavbarItem>
             </NavbarContent>
 
             <NavbarContent className="sm:hidden basis-1 pl-4" justify="end">
                 <ThemeSwitch />
-                <NavbarMenuToggle />
+                {isAuthenticated ? <UserProfile session={session} /> : <SignInButton />}
             </NavbarContent>
 
-            <NavbarMenu>
+            {/* <NavbarMenu>
                 <div className="mx-4 mt-2 flex flex-col gap-2">
                     {siteConfig.navMenuItems.map((item, index) => (
                         <NavbarMenuItem key={`${item}-${index}`}>
@@ -66,7 +71,7 @@ export const Navbar = () => {
                         </NavbarMenuItem>
                     ))}
                 </div>
-            </NavbarMenu>
+            </NavbarMenu> */}
         </HeroUINavbar>
     );
 };

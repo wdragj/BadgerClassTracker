@@ -1,14 +1,17 @@
-/* eslint-disable no-console */
 export async function fetchCourses(page: number = 1, pageSize: number = 50, query: string = "*") {
     try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/courses?page=${page}&pageSize=${pageSize}&query=${encodeURIComponent(query)}`, {
-            method: "GET",
-            headers: {
-                "Content-Type": "application/json",
-            },
-        });
+        const response = await fetch(
+            `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/courses?page=${page}&pageSize=${pageSize}&query=${encodeURIComponent(query)}`,
+            {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+            }
+        );
 
         if (!response.ok) {
+            // eslint-disable-next-line no-console
             console.error(`❌ API request failed with status: ${response.status}`);
 
             return { hits: [], found: 0 };
@@ -17,6 +20,7 @@ export async function fetchCourses(page: number = 1, pageSize: number = 50, quer
         const data = await response.json();
 
         if (!data.hits) {
+            // eslint-disable-next-line no-console
             console.warn("⚠️ No courses found.");
 
             return { hits: [], found: 0 };
@@ -40,6 +44,7 @@ export async function fetchCourses(page: number = 1, pageSize: number = 50, quer
             found: data.found,
         };
     } catch (error) {
+        // eslint-disable-next-line no-console
         console.error("❌ Error fetching courses:", error);
 
         return { hits: [], found: 0 };
