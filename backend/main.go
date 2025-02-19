@@ -3,6 +3,9 @@ package main
 import (
 	"backend/api/courses"
 	"backend/api/register"
+	"backend/api/subscribe"
+	"backend/api/unsubscribe"
+	"backend/api/subscriptions"
 	"log"
 	"net/http"
 
@@ -21,6 +24,10 @@ func main() {
 	// API routes
 	http.HandleFunc("/api/courses", courses.Handler)
 	http.HandleFunc("/api/register", register.Handler)
+	http.HandleFunc("/api/subscribe", subscribe.Handler)
+	http.HandleFunc("/api/unsubscribe", unsubscribe.Handler)
+	http.HandleFunc("/api/subscriptions", subscriptions.Handler)
+
 
 	port := ":8000"
 	log.Printf("🚀 Local server running on http://localhost%s", port)
