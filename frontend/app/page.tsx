@@ -62,7 +62,7 @@ export default function CoursesPage() {
     };
 
     return (
-        <div>
+        <div className="relative min-h-screen">
             <div className="sticky top-0 z-10 flex justify-between items-center px-3 pb-1 w-full bg-background shadow-sm">
                 <div className="flex flex-col justify-start text-left">
                     <p className="text-sm text-gray-600">Total Results: {totalResults}</p>
