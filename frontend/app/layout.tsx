@@ -36,7 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     <div className="relative flex flex-col h-screen">
                         <Navbar />
                         <main className="container mx-auto max-w-7xl flex-grow overflow-auto">{children}</main>
-                        <footer className="w-full flex items-center justify-center pb-2">
+                        {/* <footer className="w-full flex items-center justify-center pb-2">
                             <Link
                                 isExternal
                                 className="flex items-center gap-1 text-current"
@@ -46,7 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                                 <span className="text-default-600">Powered by</span>
                                 <p className="text-danger">HeroUI</p>
                             </Link>
-                        </footer>
+                        </footer> */}
                     </div>
                 </Providers>
             </body>

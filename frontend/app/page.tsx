@@ -114,7 +114,7 @@ export default function CoursesPage() {
             )}
 
             {pages > 0 && (
-                <div className="sticky bottom-0 w-full py-1 flex justify-center">
+                <div className="sticky bottom-0 z-10 w-full py-1 flex justify-center bg-background">
                     <Pagination isCompact showControls showShadow color="danger" page={page} total={pages} onChange={(newPage) => setPage(newPage)} />
                 </div>
             )}
