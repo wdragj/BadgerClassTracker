@@ -1,14 +1,13 @@
-name: GitHub Actions Demo
-on: [push]
+name: Trigger Cron Job
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+
 jobs:
-  Explore-GitHub-Actions: 
-    runs-on: ubuntu-latest 
+  call-api:
+    runs-on: ubuntu-latest
     steps:
-      - run: echo "The job was automatically triggered by a ${{ github.event_name }} event."
-      - name: Check out repository code 
-        uses: actions/checkout@v2
-      - run: echo "? The ${{ github.repository }} repository has been cloned to the runner."
-      - name: List files in the repository 
+      - name: Call check availability endpoint
         run: |
-          ls $11 github.workspace }}
-      - run: echo "This job's status is ${{ job.status }}."
+          curl -X GET "${{ secrets.CRON_URL }}${{ secrets.CRON_ENDPOINT }}"
