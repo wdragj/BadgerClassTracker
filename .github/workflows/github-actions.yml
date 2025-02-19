@@ -1,4 +1,4 @@
-name: Trigger Cron Job
+name: Trigger Cron Job API
 
 on:
   schedule:
