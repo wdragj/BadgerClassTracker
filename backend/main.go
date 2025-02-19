@@ -2,10 +2,11 @@ package main
 
 import (
 	"backend/api/courses"
+	checkAvailability "backend/api/cron/check-availability"
 	"backend/api/register"
 	"backend/api/subscribe"
-	"backend/api/unsubscribe"
 	"backend/api/subscriptions"
+	"backend/api/unsubscribe"
 	"log"
 	"net/http"
 
@@ -27,6 +28,7 @@ func main() {
 	http.HandleFunc("/api/subscribe", subscribe.Handler)
 	http.HandleFunc("/api/unsubscribe", unsubscribe.Handler)
 	http.HandleFunc("/api/subscriptions", subscriptions.Handler)
+	http.HandleFunc("/api/cron/check-vailability", checkAvailability.Handler)
 
 
 	port := ":8000"
