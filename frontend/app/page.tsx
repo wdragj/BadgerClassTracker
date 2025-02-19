@@ -63,7 +63,7 @@ export default function CoursesPage() {
 
     return (
         <div className="relative min-h-screen">
-            <div className="sticky top-0 z-50 flex justify-between items-center px-3 pb-1 w-full bg-background shadow-sm">
+            <div className="sticky top-0 z-10 flex justify-between items-center px-3 pb-1 w-full bg-background shadow-sm">
                 <div className="flex flex-col justify-start text-left">
                     <p className="text-sm text-gray-600">Total Results: {totalResults}</p>
                 </div>
@@ -114,7 +114,7 @@ export default function CoursesPage() {
             )}
 
             {pages > 0 && (
-                <div className="sticky bottom-0 z-50 w-full py-1 flex justify-center bg-background">
+                <div className="sticky bottom-0 z-10 w-full py-3 flex justify-center bg-background">
                     <Pagination isCompact showControls showShadow color="danger" page={page} total={pages} onChange={(newPage) => setPage(newPage)} />
                 </div>
             )}
