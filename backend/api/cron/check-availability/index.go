@@ -1,19 +1,23 @@
 package checkAvailability
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/corpix/uarand"
 	"github.com/go-resty/resty/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/mailersend/mailersend-go"
 )
 
 const apiURL = "https://public.enroll.wisc.edu/api/search/v1"
 
+// getRandomUserAgent returns a random user agent.
 func getRandomUserAgent() string {
 	return uarand.GetRandom()
 }
@@ -85,8 +89,52 @@ func checkClassStatus(courseName string) (bool, error) {
 	return false, nil
 }
 
+// sendMailerSendEmail uses the MailerSend Go SDK to send an email notification.
+func sendMailerSendEmail(recipientEmail, courseName, prevStatus, newStatus string) error {
+	apiKey := os.Getenv("MAILERSEND_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("MAILERSEND_API_KEY not set")
+	}
+
+	// Initialize the MailerSend client.
+	ms := mailersend.NewMailersend(apiKey)
+
+	// Create a context with timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	subject := fmt.Sprintf("Course Update: %s is now %s", courseName, newStatus)
+	text := fmt.Sprintf("%s was previously %s.\nIt is now %s.\n\nThank you.", courseName, prevStatus, newStatus)
+	html := fmt.Sprintf("<p>%s was previously <strong>%s</strong>.<br>It is now <strong>%s</strong>.<br><br>Thank you.</p>", courseName, prevStatus, newStatus)
+
+	// Set sender details from environment variables.
+	from := mailersend.From{
+		Name:  os.Getenv("EMAIL_FROM_NAME"), // e.g., "Your Name"
+		Email: os.Getenv("EMAIL_FROM"),      // e.g., "info@yourdomain.com"
+	}
+
+	// Prepare the recipient. If you have a name, you can include it; otherwise, leave it empty.
+	recipients := []mailersend.Recipient{
+		{
+			Email: recipientEmail,
+		},
+	}
+
+	message := ms.Email.NewMessage()
+	message.SetFrom(from)
+	message.SetRecipients(recipients)
+	message.SetSubject(subject)
+	message.SetText(text)
+	message.SetHTML(html)
+
+	// Send the email.
+	_, err := ms.Email.Send(ctx, message)
+	return err
+}
+
+// Handler is the HTTP handler for the cron job.
 func Handler(w http.ResponseWriter, r *http.Request) {
-	// Only allow GET requests for the cron job
+	// Only allow GET requests for the cron job.
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -145,17 +193,61 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		if available {
 			newStatus = "open"
 		}
-		// Update last_checked and course_status for all subscriptions for this course.
-		updateQuery := `
-			UPDATE subscriptions
-			SET last_checked = now(), course_status = $1
-			WHERE course_id = $2 AND course_subject_code = $3
+
+		// Get the previous status for the course.
+		var prevStatus string
+		statusQuery := `
+			SELECT course_status
+			FROM subscriptions
+			WHERE course_id = $1 AND course_subject_code = $2
+			LIMIT 1
 		`
-		_, err = pool.Exec(r.Context(), updateQuery, newStatus, course.CourseID, course.CourseSubjectCode)
+		err = pool.QueryRow(r.Context(), statusQuery, course.CourseID, course.CourseSubjectCode).Scan(&prevStatus)
 		if err != nil {
-			log.Printf("Error updating course %s: %v\n", course.CourseName, err)
+			log.Printf("Error retrieving previous status for %s: %v\n", course.CourseName, err)
+			// Proceed with update if status cannot be determined.
+		}
+
+		// Only update and notify if the status has changed.
+		if newStatus != prevStatus {
+			updateQuery := `
+				UPDATE subscriptions
+				SET last_checked = now(), course_status = $1
+				WHERE course_id = $2 AND course_subject_code = $3
+			`
+			_, err = pool.Exec(r.Context(), updateQuery, newStatus, course.CourseID, course.CourseSubjectCode)
+			if err != nil {
+				log.Printf("Error updating course %s: %v\n", course.CourseName, err)
+			} else {
+				log.Printf("Updated course %s from status %s to %s\n", course.CourseName, prevStatus, newStatus)
+			}
+
+			// Query subscriber emails for this course.
+			emailQuery := `
+				SELECT user_email
+				FROM subscriptions
+				WHERE course_id = $1 AND course_subject_code = $2
+			`
+			emailRows, err := pool.Query(r.Context(), emailQuery, course.CourseID, course.CourseSubjectCode)
+			if err != nil {
+				log.Printf("Error fetching subscribers for %s: %v\n", course.CourseName, err)
+				continue
+			}
+			for emailRows.Next() {
+				var email string
+				if err := emailRows.Scan(&email); err != nil {
+					log.Println("Error scanning email:", err)
+					continue
+				}
+				if err := sendMailerSendEmail(email, course.CourseName, prevStatus, newStatus); err != nil {
+					log.Printf("Error sending email to %s: %v\n", email, err)
+				} else {
+					log.Printf("Notification sent to %s for course %s\n", email, course.CourseName)
+				}
+			}
+			emailRows.Close()
 		} else {
-			log.Printf("Updated course %s to status: %s\n", course.CourseName, newStatus)
+			log.Printf("No status change for course %s (remains %s)\n", course.CourseName, newStatus)
 		}
 	}
 

@@ -28,7 +28,7 @@ func main() {
 	http.HandleFunc("/api/subscribe", subscribe.Handler)
 	http.HandleFunc("/api/unsubscribe", unsubscribe.Handler)
 	http.HandleFunc("/api/subscriptions", subscriptions.Handler)
-	http.HandleFunc("/api/cron/check-vailability", checkAvailability.Handler)
+	http.HandleFunc("/api/cron/check-availability", checkAvailability.Handler)
 
 
 	port := ":8000"
