@@ -12,7 +12,7 @@ import { fetchCourses } from "@/lib/api";
 import SubscribeModal from "@/components/subscribeModal";
 import UnsubscribeModal from "@/components/unsubscribeModal";
 
-// Define your Course interface (adjust as needed)
+// Course interface
 export interface Course {
     id: string;
     subjectCode: string;
@@ -21,10 +21,22 @@ export interface Course {
     credits: number;
 }
 
-// Define your Subscription interface (as returned by your backend)
+// Subscription interface
 interface Subscription {
     courseId: string;
     courseSubjectCode: string;
+}
+
+// CoursesResponse interface
+interface CoursesResponse {
+    term: {
+        termCode: string;
+        longDescription: string;
+    };
+    courses: {
+        hits: Course[];
+        found: number;
+    };
 }
 
 export default function CoursesPage() {
@@ -48,7 +60,7 @@ export default function CoursesPage() {
     const rowsPerPage = 50;
 
     // Fetch courses using SWR
-    const { data, isLoading, mutate } = useSWR<{ hits: Course[]; found: number }>(
+    const { data, isLoading, mutate } = useSWR<{ hits: Course[]; found: number; term: { longDescription: string } }>(
         ["courses", page, rowsPerPage, submittedQuery],
         () => fetchCourses(page, rowsPerPage, submittedQuery),
         { keepPreviousData: true }
@@ -63,6 +75,8 @@ export default function CoursesPage() {
 
     const paginatedData = data?.hits || [];
     const totalResults = data?.found || 0;
+    const termLongDescription = data?.term.longDescription || "";
+
     const pages = Math.ceil(totalResults / rowsPerPage);
     const loadingState = isLoading || !data ? "loading" : "idle";
 
@@ -210,7 +224,8 @@ export default function CoursesPage() {
             {/* Sticky top search bar */}
             <div className="sticky top-16 z-10 flex justify-between items-center px-3 py-1 w-full bg-background shadow-sm">
                 <div className="flex flex-col justify-start text-left">
-                    <p className="text-sm text-gray-600">Total Results: {totalResults}</p>
+                    <p className="text-sm text-gray-600">{termLongDescription}</p>
+                    <p className="text-sm text-gray-600">{totalResults} results</p>
                 </div>
                 <div className="w-64">
                     <Input

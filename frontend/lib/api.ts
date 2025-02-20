@@ -14,39 +14,41 @@ export async function fetchCourses(page: number = 1, pageSize: number = 50, quer
             // eslint-disable-next-line no-console
             console.error(`❌ API request failed with status: ${response.status}`);
 
-            return { hits: [], found: 0 };
+            return { term: null, hits: [], found: 0 };
         }
 
         const data = await response.json();
 
-        if (!data.hits) {
+        // Ensure that the courses property exists and has hits
+        if (!data.courses || !data.courses.hits) {
             // eslint-disable-next-line no-console
             console.warn("⚠️ No courses found.");
 
-            return { hits: [], found: 0 };
+            return { term: data.term || null, hits: [], found: 0 };
         }
 
         return {
-            hits: data.hits.map((course: any) => ({
+            term: data.term,
+            hits: data.courses.hits.map((course: any) => ({
                 id: course.courseId,
                 name: course.courseDesignation,
                 fullname: course.fullCourseDesignation,
                 title: course.title,
-                subject: course.subject.shortDescription,
-                subjectCode: course.subject.subjectCode,
-                termCode: course.subject.termCode,
+                subject: course.subject?.longDescription,
+                subjectCode: course.subject?.subjectCode,
+                termCode: course.subject?.termCode,
                 credits: course.creditRange,
                 description: course.description,
                 enrollmentPrerequisites: course.enrollmentPrerequisites || "None",
                 typicallyOffered: course.typicallyOffered || "N/A",
                 repeatable: course.repeatable === "Y" ? "Yes" : "No",
             })),
-            found: data.found,
+            found: data.courses.found,
         };
     } catch (error) {
         // eslint-disable-next-line no-console
         console.error("❌ Error fetching courses:", error);
 
-        return { hits: [], found: 0 };
+        return { term: null, hits: [], found: 0 };
     }
 }
