@@ -22,12 +22,73 @@ func getRandomUserAgent() string {
 	return uarand.GetRandom()
 }
 
+// fetchCurrentTermCode fetches the current term code from the aggregate endpoint.
+func fetchCurrentTermCode() (string, error) {
+	client := resty.New()
+	resp, err := client.R().
+		SetHeaders(map[string]string{
+			"Accept":     "application/json, text/plain, */*",
+			"User-Agent": getRandomUserAgent(),
+			"Origin":     "https://public.enroll.wisc.edu",
+			"Referer":    "https://public.enroll.wisc.edu/search",
+		}).
+		Get(apiURL + "/aggregate")
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode() != http.StatusOK {
+		return "", fmt.Errorf("aggregate API request failed with status: %d", resp.StatusCode())
+	}
+
+	var aggResult map[string]interface{}
+	if err := json.Unmarshal(resp.Body(), &aggResult); err != nil {
+		return "", err
+	}
+
+	terms, ok := aggResult["terms"].([]interface{})
+	if !ok || len(terms) == 0 {
+		return "", fmt.Errorf("no terms found in aggregate response")
+	}
+
+	// Look for the first term where "pastTerm" is false.
+	for _, term := range terms {
+		t, ok := term.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		pastTerm, ok := t["pastTerm"].(bool)
+		if !ok {
+			continue
+		}
+		if !pastTerm {
+			if termCode, ok := t["termCode"].(string); ok {
+				return termCode, nil
+			}
+		}
+	}
+
+	// Fallback: use the termCode of the first term.
+	if t, ok := terms[0].(map[string]interface{}); ok {
+		if termCode, ok := t["termCode"].(string); ok {
+			return termCode, nil
+		}
+	}
+
+	return "", fmt.Errorf("term code not found")
+}
+
 // checkClassStatus checks whether a course (by its name) is available.
 func checkClassStatus(courseName string) (bool, error) {
+	// Fetch the dynamic term code.
+	termCode, err := fetchCurrentTermCode()
+	if err != nil {
+		return false, err
+	}
+
 	client := resty.New()
 
 	payload := map[string]interface{}{
-		"selectedTerm": "1254",
+		"selectedTerm": termCode, // dynamically set term code
 		"queryString":  courseName,
 		"filters": []map[string]interface{}{
 			{
@@ -55,11 +116,10 @@ func checkClassStatus(courseName string) (bool, error) {
 			"Content-Type": "application/json",
 			"User-Agent":   getRandomUserAgent(),
 			"Origin":       "https://public.enroll.wisc.edu",
-			"Referer":      fmt.Sprintf("https://public.enroll.wisc.edu/search?term=1254&keywords=%s", courseName),
+			"Referer":      fmt.Sprintf("https://public.enroll.wisc.edu/search?term=%s&keywords=%s", termCode, courseName),
 		}).
 		SetBody(payload).
 		Post(apiURL)
-
 	if err != nil {
 		return false, err
 	}
