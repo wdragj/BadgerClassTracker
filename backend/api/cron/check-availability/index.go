@@ -189,10 +189,6 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Error checking %s: %v\n", course.CourseName, err)
 			continue
 		}
-		newStatus := "full"
-		if available {
-			newStatus = "open"
-		}
 
 		// Get the previous status for the course.
 		var prevStatus string
@@ -208,8 +204,15 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			// Proceed with update if status cannot be determined.
 		}
 
-		// Only update and notify if the status has changed.
+		// Determine new status based on availability.
+		newStatus := "full"
+		if available {
+			newStatus = "open"
+		}
+
+		// Always update last_checked. If the status changed, update it too.
 		if newStatus != prevStatus {
+			// Update both last_checked and course_status.
 			updateQuery := `
 				UPDATE subscriptions
 				SET last_checked = now(), course_status = $1
@@ -221,7 +224,23 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			} else {
 				log.Printf("Updated course %s from status %s to %s\n", course.CourseName, prevStatus, newStatus)
 			}
+		} else {
+			// Only update last_checked if the status remains the same.
+			updateQuery := `
+				UPDATE subscriptions
+				SET last_checked = now()
+				WHERE course_id = $1 AND course_subject_code = $2
+			`
+			_, err = pool.Exec(r.Context(), updateQuery, course.CourseID, course.CourseSubjectCode)
+			if err != nil {
+				log.Printf("Error updating last_checked for course %s: %v\n", course.CourseName, err)
+			} else {
+				log.Printf("Updated last_checked for course %s (status remains %s)\n", course.CourseName, newStatus)
+			}
+		}
 
+		// If the status changed, then send notifications.
+		if newStatus != prevStatus {
 			// Query subscriber emails for this course.
 			emailQuery := `
 				SELECT user_email
@@ -246,8 +265,6 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			emailRows.Close()
-		} else {
-			log.Printf("No status change for course %s (remains %s)\n", course.CourseName, newStatus)
 		}
 	}
 
