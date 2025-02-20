@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/corpix/uarand"
@@ -17,13 +18,31 @@ import (
 
 const apiURL = "https://public.enroll.wisc.edu/api/search/v1"
 
-// getRandomUserAgent returns a random user agent.
 func getRandomUserAgent() string {
 	return uarand.GetRandom()
 }
 
-// fetchCurrentTermCode fetches the current term code from the aggregate endpoint.
-func fetchCurrentTermCode() (string, error) {
+// Term holds term code and short description.
+type Term struct {
+	TermCode         string
+	ShortDescription string
+}
+
+// expandSeasonAbbreviation replaces abbreviated season names with full names.
+func expandSeasonAbbreviation(desc string) string {
+	replacements := map[string]string{
+		"Sprng": "Spring",
+		"Summr": "Summer",
+		// Add additional replacements if needed.
+	}
+	for abbr, full := range replacements {
+		desc = strings.ReplaceAll(desc, abbr, full)
+	}
+	return desc
+}
+
+// fetchCurrentTerm retrieves the current term details (term code and short description)
+func fetchCurrentTerm() (*Term, error) {
 	client := resty.New()
 	resp, err := client.R().
 		SetHeaders(map[string]string{
@@ -34,25 +53,25 @@ func fetchCurrentTermCode() (string, error) {
 		}).
 		Get(apiURL + "/aggregate")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if resp.StatusCode() != http.StatusOK {
-		return "", fmt.Errorf("aggregate API request failed with status: %d", resp.StatusCode())
+		return nil, fmt.Errorf("aggregate API request failed with status: %d", resp.StatusCode())
 	}
 
 	var aggResult map[string]interface{}
 	if err := json.Unmarshal(resp.Body(), &aggResult); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	terms, ok := aggResult["terms"].([]interface{})
 	if !ok || len(terms) == 0 {
-		return "", fmt.Errorf("no terms found in aggregate response")
+		return nil, fmt.Errorf("no terms found in aggregate response")
 	}
 
 	// Look for the first term where "pastTerm" is false.
-	for _, term := range terms {
-		t, ok := term.(map[string]interface{})
+	for _, termInterface := range terms {
+		t, ok := termInterface.(map[string]interface{})
 		if !ok {
 			continue
 		}
@@ -61,26 +80,36 @@ func fetchCurrentTermCode() (string, error) {
 			continue
 		}
 		if !pastTerm {
-			if termCode, ok := t["termCode"].(string); ok {
-				return termCode, nil
+			termCode, okCode := t["termCode"].(string)
+			shortDesc, okShort := t["shortDescription"].(string)
+			if okCode && okShort {
+				shortDesc = expandSeasonAbbreviation(shortDesc)
+				return &Term{
+					TermCode:         termCode,
+					ShortDescription: shortDesc,
+				}, nil
 			}
 		}
 	}
 
-	// Fallback: use the termCode of the first term.
-	if t, ok := terms[0].(map[string]interface{}); ok {
-		if termCode, ok := t["termCode"].(string); ok {
-			return termCode, nil
-		}
+	// Fallback: use the first term in the list.
+	if firstTerm, ok := terms[0].(map[string]interface{}); ok {
+		termCode, _ := firstTerm["termCode"].(string)
+		shortDesc, _ := firstTerm["shortDescription"].(string)
+		shortDesc = expandSeasonAbbreviation(shortDesc)
+		return &Term{
+			TermCode:         termCode,
+			ShortDescription: shortDesc,
+		}, nil
 	}
 
-	return "", fmt.Errorf("term code not found")
+	return nil, fmt.Errorf("term details not found")
 }
 
 // checkClassStatus checks whether a course (by its name) is available.
 func checkClassStatus(courseName string) (bool, error) {
-	// Fetch the dynamic term code.
-	termCode, err := fetchCurrentTermCode()
+	// Fetch the dynamic term details.
+	term, err := fetchCurrentTerm()
 	if err != nil {
 		return false, err
 	}
@@ -88,7 +117,7 @@ func checkClassStatus(courseName string) (bool, error) {
 	client := resty.New()
 
 	payload := map[string]interface{}{
-		"selectedTerm": termCode, // dynamically set term code
+		"selectedTerm": term.TermCode, // dynamically set term code
 		"queryString":  courseName,
 		"filters": []map[string]interface{}{
 			{
@@ -116,7 +145,7 @@ func checkClassStatus(courseName string) (bool, error) {
 			"Content-Type": "application/json",
 			"User-Agent":   getRandomUserAgent(),
 			"Origin":       "https://public.enroll.wisc.edu",
-			"Referer":      fmt.Sprintf("https://public.enroll.wisc.edu/search?term=%s&keywords=%s", termCode, courseName),
+			"Referer":      fmt.Sprintf("https://public.enroll.wisc.edu/search?term=%s&keywords=%s", term.TermCode, courseName),
 		}).
 		SetBody(payload).
 		Post(apiURL)
@@ -150,7 +179,8 @@ func checkClassStatus(courseName string) (bool, error) {
 }
 
 // sendMailerSendEmail uses the MailerSend Go SDK to send an email notification.
-func sendMailerSendEmail(recipientEmail, courseName, prevStatus, newStatus string) error {
+// The email will include the term info on the first line.
+func sendMailerSendEmail(recipientEmail, term, courseName, prevStatus, newStatus string) error {
 	apiKey := os.Getenv("MAILERSEND_API_KEY")
 	if apiKey == "" {
 		return fmt.Errorf("MAILERSEND_API_KEY not set")
@@ -164,20 +194,16 @@ func sendMailerSendEmail(recipientEmail, courseName, prevStatus, newStatus strin
 	defer cancel()
 
 	subject := fmt.Sprintf("Course Update: %s is now %s", courseName, newStatus)
-	text := fmt.Sprintf("%s was previously %s.\nIt is now %s.\n\nThank you.", courseName, prevStatus, newStatus)
-	html := fmt.Sprintf("<p>%s was previously <strong>%s</strong>.<br>It is now <strong>%s</strong>.<br><br>Thank you.</p>", courseName, prevStatus, newStatus)
+	text := fmt.Sprintf("%s\n\n%s was previously %s.\nIt is now %s.\n\nThank you.", term, courseName, prevStatus, newStatus)
+	html := fmt.Sprintf("<p>%s<br><br>%s was previously <strong>%s</strong>.<br>It is now <strong>%s</strong>.<br><br>Thank you.</p>", term, courseName, prevStatus, newStatus)
 
-	// Set sender details from environment variables.
 	from := mailersend.From{
-		Name:  os.Getenv("EMAIL_FROM_NAME"), // e.g., "Your Name"
-		Email: os.Getenv("EMAIL_FROM"),      // e.g., "info@yourdomain.com"
+		Name:  os.Getenv("EMAIL_FROM_NAME"),
+		Email: os.Getenv("EMAIL_FROM"),
 	}
 
-	// Prepare the recipient. If you have a name, you can include it; otherwise, leave it empty.
 	recipients := []mailersend.Recipient{
-		{
-			Email: recipientEmail,
-		},
+		{ Email: recipientEmail },
 	}
 
 	message := ms.Email.NewMessage()
@@ -187,7 +213,6 @@ func sendMailerSendEmail(recipientEmail, courseName, prevStatus, newStatus strin
 	message.SetText(text)
 	message.SetHTML(html)
 
-	// Send the email.
 	_, err := ms.Email.Send(ctx, message)
 	return err
 }
@@ -212,7 +237,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer pool.Close()
 
-	// Query distinct course names, course IDs, and subject codes from subscriptions.
+	// Query distinct courses from subscriptions.
 	query := `
 		SELECT DISTINCT course_name, course_id, course_subject_code
 		FROM subscriptions
@@ -230,7 +255,6 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		CourseID          string
 		CourseSubjectCode string
 	}
-
 	var coursesToCheck []CourseInfo
 	for rows.Next() {
 		var info CourseInfo
@@ -242,7 +266,15 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		coursesToCheck = append(coursesToCheck, info)
 	}
 
-	// For each course, check availability and update the subscription record.
+	// Fetch current term details once to include in notifications.
+	currentTerm, err := fetchCurrentTerm()
+	if err != nil {
+		log.Println("Error fetching current term:", err)
+		// Proceed without term info if needed.
+		currentTerm = &Term{ShortDescription: ""}
+	}
+
+	// For each course, check availability and update the centralized course_availability table.
 	for _, course := range coursesToCheck {
 		available, err := checkClassStatus(course.CourseName)
 		if err != nil {
@@ -250,58 +282,40 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Get the previous status for the course.
-		var prevStatus string
-		statusQuery := `
-			SELECT course_status
-			FROM subscriptions
-			WHERE course_id = $1 AND course_subject_code = $2
-			LIMIT 1
-		`
-		err = pool.QueryRow(r.Context(), statusQuery, course.CourseID, course.CourseSubjectCode).Scan(&prevStatus)
-		if err != nil {
-			log.Printf("Error retrieving previous status for %s: %v\n", course.CourseName, err)
-			// Proceed with update if status cannot be determined.
-		}
-
-		// Determine new status based on availability.
+		// Determine new status.
 		newStatus := "full"
 		if available {
 			newStatus = "open"
 		}
 
-		// Always update last_checked. If the status changed, update it too.
-		if newStatus != prevStatus {
-			// Update both last_checked and course_status.
-			updateQuery := `
-				UPDATE subscriptions
-				SET last_checked = now(), course_status = $1
-				WHERE course_id = $2 AND course_subject_code = $3
-			`
-			_, err = pool.Exec(r.Context(), updateQuery, newStatus, course.CourseID, course.CourseSubjectCode)
-			if err != nil {
-				log.Printf("Error updating course %s: %v\n", course.CourseName, err)
-			} else {
-				log.Printf("Updated course %s from status %s to %s\n", course.CourseName, prevStatus, newStatus)
-			}
-		} else {
-			// Only update last_checked if the status remains the same.
-			updateQuery := `
-				UPDATE subscriptions
-				SET last_checked = now()
-				WHERE course_id = $1 AND course_subject_code = $2
-			`
-			_, err = pool.Exec(r.Context(), updateQuery, course.CourseID, course.CourseSubjectCode)
-			if err != nil {
-				log.Printf("Error updating last_checked for course %s: %v\n", course.CourseName, err)
-			} else {
-				log.Printf("Updated last_checked for course %s (status remains %s)\n", course.CourseName, newStatus)
-			}
+		// Retrieve previous status from course_availability.
+		var prevStatus string
+		statusQuery := `
+			SELECT course_status
+			FROM course_availability
+			WHERE course_id = $1 AND course_subject_code = $2
+		`
+		err = pool.QueryRow(r.Context(), statusQuery, course.CourseID, course.CourseSubjectCode).Scan(&prevStatus)
+		if err != nil {
+			// If no record exists, assume default previous status as "full".
+			prevStatus = "full"
 		}
 
-		// If the status changed, then send notifications.
+		// Upsert the centralized course availability record.
+		upsertQuery := `
+			INSERT INTO course_availability (course_id, course_subject_code, course_name, course_status, last_checked)
+			VALUES ($1, $2, $3, $4, now())
+			ON CONFLICT (course_id, course_subject_code)
+			DO UPDATE SET course_status = EXCLUDED.course_status, last_checked = EXCLUDED.last_checked
+		`
+		_, err = pool.Exec(r.Context(), upsertQuery, course.CourseID, course.CourseSubjectCode, course.CourseName, newStatus)
+		if err != nil {
+			log.Printf("Error upserting course %s: %v\n", course.CourseName, err)
+			continue
+		}
+
+		// If status changed, send notifications.
 		if newStatus != prevStatus {
-			// Query subscriber emails for this course.
 			emailQuery := `
 				SELECT user_email
 				FROM subscriptions
@@ -318,7 +332,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 					log.Println("Error scanning email:", err)
 					continue
 				}
-				if err := sendMailerSendEmail(email, course.CourseName, prevStatus, newStatus); err != nil {
+				if err := sendMailerSendEmail(email, currentTerm.ShortDescription, course.CourseName, prevStatus, newStatus); err != nil {
 					log.Printf("Error sending email to %s: %v\n", email, err)
 				} else {
 					log.Printf("Notification sent to %s for course %s\n", email, course.CourseName)

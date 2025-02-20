@@ -11,7 +11,6 @@ import (
 )
 
 // SubscriptionPayload defines the JSON structure expected from the frontend.
-// Note: courseStatus is omitted.
 type SubscriptionPayload struct {
 	UserEmail         string `json:"userEmail"`
 	UserFullName      string `json:"userFullName"`
@@ -21,6 +20,7 @@ type SubscriptionPayload struct {
 }
 
 func Handler(w http.ResponseWriter, r *http.Request) {
+	// Set CORS headers.
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
@@ -43,7 +43,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Received subscription payload: %+v\n", payload)
 
-	// Connect to the database using the DATABASE_URL environment variable.
+	// Connect to the database using the POSTGRES_URL environment variable.
 	dbURL := os.Getenv("POSTGRES_URL")
 	pool, err := pgxpool.New(r.Context(), dbURL)
 	if err != nil {
@@ -56,19 +56,18 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 
 	// Insert a new subscription record.
-	// Since course_status isn't sent by the frontend, we explicitly set it to 'open'.
+	// Since the last_checked column has been dropped, we only reference created_at.
 	query := `
 	INSERT INTO subscriptions (
-	  user_id, user_email, user_fullname, course_id, course_name, course_subject_code, course_status, last_checked, created_at
+	  user_id, user_email, user_fullname, course_id, course_name, course_subject_code, created_at
 	)
 	VALUES (
-	  (SELECT id FROM users WHERE email=$1), $1, $2, $3, $4, $5, 'open', $6, $6
+	  (SELECT id FROM users WHERE email=$1), $1, $2, $3, $4, $5, $6
 	)
 	ON CONFLICT (user_id, course_id, course_subject_code)
 	DO UPDATE SET
 	  user_fullname = EXCLUDED.user_fullname,
-	  course_name = EXCLUDED.course_name,
-	  last_checked = EXCLUDED.last_checked
+	  course_name = EXCLUDED.course_name
 	`
 
 	_, err = pool.Exec(
@@ -79,7 +78,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		payload.CourseID,          // $3
 		payload.CourseName,        // $4
 		payload.CourseSubjectCode, // $5
-		now,                       // $6: for both last_checked and created_at on insert
+		now,                       // $6: for created_at on insert
 	)
 	if err != nil {
 		http.Error(w, "Failed to subscribe", http.StatusInternalServerError)

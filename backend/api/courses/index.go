@@ -6,27 +6,37 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/corpix/uarand"
 	"github.com/go-resty/resty/v2"
 )
 
-// API URL for UW Madison Enrollment
 const apiURL = "https://public.enroll.wisc.edu/api/search/v1"
 
 // Term holds term code and short description.
 type Term struct {
 	TermCode         string `json:"termCode"`
-	LongDescription string `json:"longDescription"`
+	ShortDescription string `json:"shortDescription"`
 }
 
-// getRandomUserAgent returns a random user-agent.
 func getRandomUserAgent() string {
 	return uarand.GetRandom()
 }
 
-// fetchCurrentTerm retrieves the current term details (term code and short description)
-// from the aggregate endpoint. It looks for the first term with "pastTerm": false.
+// expandSeasonAbbreviation expands abbreviated season names in the short description.
+func expandSeasonAbbreviation(shortDesc string) string {
+	replacements := map[string]string{
+		"Sprng": "Spring",
+		"Summr": "Summer",
+	}
+	for abbr, full := range replacements {
+		shortDesc = strings.ReplaceAll(shortDesc, abbr, full)
+	}
+	return shortDesc
+}
+
+// fetchCurrentTerm retrieves the current term details
 func fetchCurrentTerm() (*Term, error) {
 	client := resty.New()
 	resp, err := client.R().
@@ -41,7 +51,7 @@ func fetchCurrentTerm() (*Term, error) {
 		return nil, err
 	}
 	if resp.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf("Aggregate API request failed with status: %d", resp.StatusCode())
+		return nil, fmt.Errorf("aggregate API request failed with status: %d", resp.StatusCode())
 	}
 
 	var aggResult map[string]interface{}
@@ -67,11 +77,13 @@ func fetchCurrentTerm() (*Term, error) {
 		}
 		if !pastTerm {
 			termCode, okCode := termData["termCode"].(string)
-			longDesc, okDesc := termData["longDescription"].(string)
-			if okCode && okDesc {
+			shortDesc, okShort := termData["shortDescription"].(string)
+			if okCode && okShort {
+				// Expand abbreviated season names.
+				shortDesc = expandSeasonAbbreviation(shortDesc)
 				return &Term{
 					TermCode:         termCode,
-					LongDescription: longDesc,
+					ShortDescription: shortDesc,
 				}, nil
 			}
 		}
@@ -80,17 +92,18 @@ func fetchCurrentTerm() (*Term, error) {
 	// Fallback: use the first term in the list.
 	if firstTerm, ok := terms[0].(map[string]interface{}); ok {
 		termCode, _ := firstTerm["termCode"].(string)
-		longDesc, _ := firstTerm["longDescription"].(string)
+		shortDesc, _ := firstTerm["shortDescription"].(string)
+		shortDesc = expandSeasonAbbreviation(shortDesc)
 		return &Term{
 			TermCode:         termCode,
-			LongDescription: longDesc,
+			ShortDescription: shortDesc,
 		}, nil
 	}
 
 	return nil, fmt.Errorf("term details not found")
 }
 
-// fetchCourses queries the courses API using the provided term code.
+// fetchCourses queries the courses API
 func fetchCourses(query string, page int, pageSize int, termCode string) (map[string]interface{}, error) {
 	client := resty.New()
 
@@ -190,7 +203,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{
 		"term": map[string]interface{}{
 			"termCode":         term.TermCode,
-			"longDescription": term.LongDescription,
+			"shortDescription": term.ShortDescription,
 		},
 		"courses": courses,
 	}
