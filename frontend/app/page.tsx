@@ -27,18 +27,6 @@ interface Subscription {
     courseSubjectCode: string;
 }
 
-// CoursesResponse interface
-interface CoursesResponse {
-    term: {
-        termCode: string;
-        longDescription: string;
-    };
-    courses: {
-        hits: Course[];
-        found: number;
-    };
-}
-
 export default function CoursesPage() {
     const { data: session, status } = useSession();
     const isAuthenticated = status === "authenticated";
@@ -60,7 +48,7 @@ export default function CoursesPage() {
     const rowsPerPage = 50;
 
     // Fetch courses using SWR
-    const { data, isLoading, mutate } = useSWR<{ hits: Course[]; found: number; term: { longDescription: string } }>(
+    const { data, isLoading, mutate } = useSWR<{ hits: Course[]; found: number; term: { shortDescription: string } }>(
         ["courses", page, rowsPerPage, submittedQuery],
         () => fetchCourses(page, rowsPerPage, submittedQuery),
         { keepPreviousData: true }
@@ -75,7 +63,7 @@ export default function CoursesPage() {
 
     const paginatedData = data?.hits || [];
     const totalResults = data?.found || 0;
-    const termLongDescription = data?.term.longDescription || "";
+    const termShortDescription = data?.term.shortDescription || "";
 
     const pages = Math.ceil(totalResults / rowsPerPage);
     const loadingState = isLoading || !data ? "loading" : "idle";
@@ -224,7 +212,7 @@ export default function CoursesPage() {
             {/* Sticky top search bar */}
             <div className="sticky top-16 z-10 flex justify-between items-center px-3 py-1 w-full bg-background shadow-sm">
                 <div className="flex flex-col justify-start text-left">
-                    <p className="text-sm text-gray-600">{termLongDescription}</p>
+                    <p className="text-sm text-gray-600">{termShortDescription}</p>
                     <p className="text-sm text-gray-600">{totalResults} results</p>
                 </div>
                 <div className="w-64">

@@ -1,15 +1,12 @@
 "use client";
 
 import { Navbar as HeroUINavbar, NavbarContent, NavbarBrand, NavbarItem } from "@heroui/navbar";
-import { link as linkStyles } from "@heroui/theme";
 import { useSession } from "next-auth/react";
 import NextLink from "next/link";
-import clsx from "clsx";
 
 import SignInButton from "./signInButton";
 import UserProfile from "./userProfile";
 
-import { siteConfig } from "@/config/site";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { Logo } from "@/components/icons";
 
