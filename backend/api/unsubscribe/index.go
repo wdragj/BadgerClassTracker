@@ -49,19 +49,42 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer pool.Close()
 
-	// Delete the subscription record for this user and course
-	query := `
-	DELETE FROM subscriptions
-	WHERE user_id = (SELECT id FROM users WHERE email=$1)
-	  AND course_id = $2
-	  AND course_subject_code = $3
+	// Delete the subscription record for this user and course.
+	deleteQuery := `
+		DELETE FROM subscriptions
+		WHERE user_id = (SELECT id FROM users WHERE email=$1)
+		  AND course_id = $2
+		  AND course_subject_code = $3
 	`
-
-	_, err = pool.Exec(r.Context(), query, payload.UserEmail, payload.CourseID, payload.CourseSubjectCode)
+	_, err = pool.Exec(r.Context(), deleteQuery, payload.UserEmail, payload.CourseID, payload.CourseSubjectCode)
 	if err != nil {
 		http.Error(w, "Failed to unsubscribe", http.StatusInternalServerError)
 		log.Println("DB delete error:", err)
 		return
+	}
+
+	// Now check if any subscriptions remain for this course.
+	cleanupQuery := `
+		SELECT COUNT(*) 
+		FROM subscriptions 
+		WHERE course_id = $1 AND course_subject_code = $2
+	`
+	var count int
+	err = pool.QueryRow(r.Context(), cleanupQuery, payload.CourseID, payload.CourseSubjectCode).Scan(&count)
+	if err != nil {
+		log.Printf("Error checking remaining subscriptions for course %s: %v\n", payload.CourseID, err)
+	} else if count == 0 {
+		// No remaining subscriptions, so delete the course_availability record.
+		deleteAvailabilityQuery := `
+			DELETE FROM course_availability 
+			WHERE course_id = $1 AND course_subject_code = $2
+		`
+		_, err = pool.Exec(r.Context(), deleteAvailabilityQuery, payload.CourseID, payload.CourseSubjectCode)
+		if err != nil {
+			log.Printf("Error deleting course_availability for course %s: %v\n", payload.CourseID, err)
+		} else {
+			log.Printf("Deleted course_availability record for course %s as no subscriptions remain.\n", payload.CourseID)
+		}
 	}
 
 	w.WriteHeader(http.StatusOK)
