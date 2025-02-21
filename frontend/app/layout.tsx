@@ -31,7 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <html suppressHydrationWarning lang="en">
             <head />
             <body className={clsx("min-h-screen bg-background font-sans antialiased", fontSans.variable)}>
-                <Providers themeProps={{ attribute: "class", defaultTheme: "dark" }}>
+                <Providers themeProps={{ attribute: "class", defaultTheme: "light" }}>
                     <div className="relative flex flex-col h-screen">
                         <div className="fixed top-0 left-0 right-0 z-50 bg-background">
                             <Navbar />
