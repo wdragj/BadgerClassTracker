@@ -7,14 +7,12 @@ import (
 	"log"
 	"net/http"
 	"os"
-	// "strconv"
-	// "strings"
 	"time"
 
 	"github.com/corpix/uarand"
 	"github.com/go-resty/resty/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/mailersend/mailersend-go"
+	"github.com/mailgun/mailgun-go/v4"
 )
 
 const apiURL = "https://public.enroll.wisc.edu/api/search/v1"
@@ -23,7 +21,7 @@ func getRandomUserAgent() string {
 	return uarand.GetRandom()
 }
 
-// Term holds term code and short description.
+// Term holds term code and short description (unused below, but can be useful).
 type Term struct {
 	TermCode         string
 	ShortDescription string
@@ -36,12 +34,6 @@ func checkClassStatus(courseName string) (bool, error) {
 	if termCode == "" {
 		termCode = "1262"
 	}
-	// We only need the code here for the API query; description is not used in the payload.
-	// But if you want it for logging, you can read it as well:
-	// termShortDesc := os.Getenv("TERM_SHORT_DESCRIPTION")
-	// if termShortDesc == "" {
-	//     termShortDesc = "Term 1262"
-	// }
 
 	client := resty.New()
 
@@ -107,43 +99,54 @@ func checkClassStatus(courseName string) (bool, error) {
 	return false, nil
 }
 
-// sendMailerSendEmail uses the MailerSend Go SDK to send an email notification.
+// sendMailgunEmail uses the Mailgun Go SDK to send an email notification.
 // The email will include the term info on the first line.
-func sendMailerSendEmail(recipientEmail, term, courseName, prevStatus, newStatus string) error {
-	apiKey := os.Getenv("MAILERSEND_API_KEY")
-	if apiKey == "" {
-		return fmt.Errorf("MAILERSEND_API_KEY not set")
+func sendMailgunEmail(recipientEmail, term, courseName, prevStatus, newStatus string) error {
+	domain := os.Getenv("MAILGUN_DOMAIN") // e.g., "sandboxXXX.mailgun.org"
+	if domain == "" {
+		return fmt.Errorf("MAILGUN_DOMAIN not set")
 	}
 
-	// Initialize the MailerSend client.
-	ms := mailersend.NewMailersend(apiKey)
+	apiKey := os.Getenv("MAILGUN_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("MAILGUN_API_KEY not set")
+	}
+
+	// Create a new Mailgun client
+	mg := mailgun.NewMailgun(domain, apiKey)
 
 	// Create a context with timeout.
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	subject := fmt.Sprintf("Course Update: %s is now %s", courseName, newStatus)
 	text := fmt.Sprintf("%s\n\n%s was previously %s.\nIt is now %s.\n\nThank you.", term, courseName, prevStatus, newStatus)
-	html := fmt.Sprintf("<p>%s<br><br>%s was previously <strong>%s</strong>.<br>It is now <strong>%s</strong>.<br><br>Thank you.</p>", term, courseName, prevStatus, newStatus)
+	html := fmt.Sprintf("<p>%s<br><br>%s was previously <strong>%s</strong>.<br>It is now <strong>%s</strong>.<br><br>Thank you.</p>",
+		term, courseName, prevStatus, newStatus)
 
-	from := mailersend.From{
-		Name:  os.Getenv("EMAIL_FROM_NAME"),
-		Email: os.Getenv("EMAIL_FROM"),
+	// Build the Mailgun message
+	message := mg.NewMessage(
+		// From
+		"Mailgun Sandbox <postmaster@"+domain+">",
+		// Subject
+		subject,
+		// Plaintext body
+		text,
+		// To
+		recipientEmail,
+	)
+
+	// Add HTML body
+	message.SetHtml(html)
+
+	// Send the message
+	_, id, err := mg.Send(ctx, message)
+	if err != nil {
+		return err
 	}
 
-	recipients := []mailersend.Recipient{
-		{Email: recipientEmail},
-	}
-
-	message := ms.Email.NewMessage()
-	message.SetFrom(from)
-	message.SetRecipients(recipients)
-	message.SetSubject(subject)
-	message.SetText(text)
-	message.SetHTML(html)
-
-	_, err := ms.Email.Send(ctx, message)
-	return err
+	log.Printf("Mailgun sent message with ID: %s\n", id)
+	return nil
 }
 
 // Handler is the HTTP handler for the cron job.
@@ -195,8 +198,6 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		coursesToCheck = append(coursesToCheck, info)
 	}
 
-	// 1. Get environment variable for short description
-	// (Term code not needed here unless you want to display it in the email body.)
 	termShortDesc := os.Getenv("TERM_SHORT_DESCRIPTION")
 	if termShortDesc == "" {
 		termShortDesc = "Term 1262"
@@ -260,7 +261,8 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 					log.Println("Error scanning email:", err)
 					continue
 				}
-				if err := sendMailerSendEmail(email, termShortDesc, course.CourseName, prevStatus, newStatus); err != nil {
+				// Send the email using the Mailgun function
+				if err := sendMailgunEmail(email, termShortDesc, course.CourseName, prevStatus, newStatus); err != nil {
 					log.Printf("Error sending email to %s: %v\n", email, err)
 				} else {
 					log.Printf("Notification sent to %s for course %s\n", email, course.CourseName)
