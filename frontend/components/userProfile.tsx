@@ -30,6 +30,9 @@ export default function UserProfile({ session }: UserProfileProps) {
         window.location.reload(); // Optionally refresh after sign-out
     };
 
+    // Handles link clicks
+    const handleClose = () => setIsOpen(false);
+
     return (
         <Popover isOpen={isOpen} offset={10} placement="bottom-end" onOpenChange={setIsOpen}>
             <PopoverTrigger>
@@ -39,6 +42,12 @@ export default function UserProfile({ session }: UserProfileProps) {
                 <div className="flex flex-col gap-1">
                     <div className="text-small font-bold">{session.user.name || "User"}</div>
                     <div className="text-xs text-gray-500">{session.user.email}</div>
+                    <Link className="text-sm text-gray-600 pt-2 pb-1 inline-flex" href="/" onPress={handleClose}>
+                        Home
+                    </Link>
+                    <Link className="text-sm text-gray-600 pt-2 pb-1 inline-flex" href="/subscriptions" onPress={handleClose}>
+                        My Subscriptions
+                    </Link>
                     <Link as="button" className="text-sm text-danger pt-2 pb-1 inline-flex" onPress={handleSignOut}>
                         Sign Out
                     </Link>

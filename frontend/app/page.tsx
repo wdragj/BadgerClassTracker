@@ -103,7 +103,8 @@ export default function CoursesPage() {
             courseId: course.id,
             courseName: course.name,
             courseSubjectCode: course.subjectCode,
-            // courseStatus is omitted; backend will default it to "open"
+            credits: Number(course.credits),
+            title: course.title,
         };
 
         try {

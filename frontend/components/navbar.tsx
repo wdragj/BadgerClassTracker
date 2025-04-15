@@ -2,11 +2,9 @@
 
 import { Navbar as HeroUINavbar, NavbarContent, NavbarBrand, NavbarItem } from "@heroui/navbar";
 import { useSession } from "next-auth/react";
-import NextLink from "next/link";
-
+import Link from "next/link";
 import SignInButton from "./signInButton";
 import UserProfile from "./userProfile";
-
 import { ThemeSwitch } from "@/components/theme-switch";
 import { Logo } from "@/components/icons";
 
@@ -16,42 +14,37 @@ export const Navbar = () => {
 
     return (
         <HeroUINavbar maxWidth="xl" position="sticky">
-            <NavbarContent className="basis-1/5 sm:basis-full" justify="start">
+            {/* Left Section: Brand */}
+            <NavbarContent className="flex-1" justify="start">
                 <NavbarBrand as="li" className="gap-3 max-w-fit">
-                    <NextLink className="flex justify-start items-center gap-1" href="/">
+                    <Link className="flex items-center gap-1" href="/">
                         <Logo />
                         <p className="font-bold text-inherit">BCC</p>
-                    </NextLink>
+                    </Link>
                 </NavbarBrand>
             </NavbarContent>
 
-            <NavbarContent className="hidden sm:flex basis-1/5 sm:basis-full" justify="end">
+            {/* Center Section: Nav Items (hidden on small screens) */}
+            <NavbarContent className="hidden sm:flex flex-1" justify="center">
+                <NavbarItem>
+                    <Link href="/" className="hover:underline">
+                        Home
+                    </Link>
+                </NavbarItem>
+                <NavbarItem>
+                    <Link href="/subscriptions" className="hover:underline">
+                        My Subscriptions
+                    </Link>
+                </NavbarItem>
+            </NavbarContent>
+
+            {/* Right Section: Theme Switch + Profile/Sign In */}
+            <NavbarContent className="flex-1" justify="end">
                 <NavbarItem className="hidden sm:flex gap-2">
                     <ThemeSwitch />
                 </NavbarItem>
                 <NavbarItem>{isAuthenticated ? <UserProfile session={session} /> : <SignInButton />}</NavbarItem>
             </NavbarContent>
-
-            <NavbarContent className="sm:hidden basis-1 pl-4" justify="end">
-                <ThemeSwitch />
-                {isAuthenticated ? <UserProfile session={session} /> : <SignInButton />}
-            </NavbarContent>
-
-            {/* <NavbarMenu>
-                <div className="mx-4 mt-2 flex flex-col gap-2">
-                    {siteConfig.navMenuItems.map((item, index) => (
-                        <NavbarMenuItem key={`${item}-${index}`}>
-                            <Link
-                                color={index === 2 ? "primary" : index === siteConfig.navMenuItems.length - 1 ? "danger" : "foreground"}
-                                href="#"
-                                size="lg"
-                            >
-                                {item.label}
-                            </Link>
-                        </NavbarMenuItem>
-                    ))}
-                </div>
-            </NavbarMenu> */}
         </HeroUINavbar>
     );
 };
