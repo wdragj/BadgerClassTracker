@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -34,73 +35,6 @@ func expandSeasonAbbreviation(shortDesc string) string {
 		shortDesc = strings.ReplaceAll(shortDesc, abbr, full)
 	}
 	return shortDesc
-}
-
-// fetchCurrentTerm retrieves the current term details
-func fetchCurrentTerm() (*Term, error) {
-	client := resty.New()
-	resp, err := client.R().
-		SetHeaders(map[string]string{
-			"Accept":     "application/json, text/plain, */*",
-			"User-Agent": getRandomUserAgent(),
-			"Origin":     "https://public.enroll.wisc.edu",
-			"Referer":    "https://public.enroll.wisc.edu/search",
-		}).
-		Get(apiURL + "/aggregate")
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf("aggregate API request failed with status: %d", resp.StatusCode())
-	}
-
-	var aggResult map[string]interface{}
-	err = json.Unmarshal(resp.Body(), &aggResult)
-	if err != nil {
-		return nil, err
-	}
-
-	terms, ok := aggResult["terms"].([]interface{})
-	if !ok || len(terms) == 0 {
-		return nil, fmt.Errorf("no terms found in aggregate response")
-	}
-
-	// Look for the first term with pastTerm == false.
-	for _, termInterface := range terms {
-		termData, ok := termInterface.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		pastTerm, ok := termData["pastTerm"].(bool)
-		if !ok {
-			continue
-		}
-		if !pastTerm {
-			termCode, okCode := termData["termCode"].(string)
-			shortDesc, okShort := termData["shortDescription"].(string)
-			if okCode && okShort {
-				// Expand abbreviated season names.
-				shortDesc = expandSeasonAbbreviation(shortDesc)
-				return &Term{
-					TermCode:         termCode,
-					ShortDescription: shortDesc,
-				}, nil
-			}
-		}
-	}
-
-	// Fallback: use the first term in the list.
-	if firstTerm, ok := terms[0].(map[string]interface{}); ok {
-		termCode, _ := firstTerm["termCode"].(string)
-		shortDesc, _ := firstTerm["shortDescription"].(string)
-		shortDesc = expandSeasonAbbreviation(shortDesc)
-		return &Term{
-			TermCode:         termCode,
-			ShortDescription: shortDesc,
-		}, nil
-	}
-
-	return nil, fmt.Errorf("term details not found")
 }
 
 // fetchCourses queries the courses API
@@ -183,15 +117,24 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		pageSize = 50
 	}
 
-	// Fetch current term details (termCode and shortDescription).
-	term, err := fetchCurrentTerm()
-	if err != nil {
-		http.Error(w, "Failed to fetch term details", http.StatusInternalServerError)
-		log.Println("Error fetching term:", err)
-		return
+	// 1. Read environment variables for term code & short description.
+	//    If they are empty, fall back to defaults.
+	termCode := os.Getenv("TERM_CODE")
+	if termCode == "" {
+		termCode = "1262"
+	}
+	termShortDesc := os.Getenv("TERM_SHORT_DESCRIPTION")
+	if termShortDesc == "" {
+		termShortDesc = "Term 1262"
 	}
 
-	// Fetch courses using the retrieved term code.
+	// 2. Create a Term struct from these variables.
+	term := &Term{
+		TermCode:         termCode,
+		ShortDescription: termShortDesc,
+	}
+
+	// 3. Fetch courses using the environment-based term code.
 	courses, err := fetchCourses(query, page, pageSize, term.TermCode)
 	if err != nil {
 		http.Error(w, "Failed to fetch courses", http.StatusInternalServerError)
@@ -199,7 +142,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Combine courses and term info into a single response.
+	// 4. Combine courses and term info into a single response.
 	response := map[string]interface{}{
 		"term": map[string]interface{}{
 			"termCode":         term.TermCode,

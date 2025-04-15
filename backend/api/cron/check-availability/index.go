@@ -7,7 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
+	// "strconv"
+	// "strings"
 	"time"
 
 	"github.com/corpix/uarand"
@@ -28,96 +29,24 @@ type Term struct {
 	ShortDescription string
 }
 
-// expandSeasonAbbreviation replaces abbreviated season names with full names.
-func expandSeasonAbbreviation(desc string) string {
-	replacements := map[string]string{
-		"Sprng": "Spring",
-		"Summr": "Summer",
-		// Add additional replacements if needed.
-	}
-	for abbr, full := range replacements {
-		desc = strings.ReplaceAll(desc, abbr, full)
-	}
-	return desc
-}
-
-// fetchCurrentTerm retrieves the current term details (term code and short description)
-func fetchCurrentTerm() (*Term, error) {
-	client := resty.New()
-	resp, err := client.R().
-		SetHeaders(map[string]string{
-			"Accept":     "application/json, text/plain, */*",
-			"User-Agent": getRandomUserAgent(),
-			"Origin":     "https://public.enroll.wisc.edu",
-			"Referer":    "https://public.enroll.wisc.edu/search",
-		}).
-		Get(apiURL + "/aggregate")
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf("aggregate API request failed with status: %d", resp.StatusCode())
-	}
-
-	var aggResult map[string]interface{}
-	if err := json.Unmarshal(resp.Body(), &aggResult); err != nil {
-		return nil, err
-	}
-
-	terms, ok := aggResult["terms"].([]interface{})
-	if !ok || len(terms) == 0 {
-		return nil, fmt.Errorf("no terms found in aggregate response")
-	}
-
-	// Look for the first term where "pastTerm" is false.
-	for _, termInterface := range terms {
-		t, ok := termInterface.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		pastTerm, ok := t["pastTerm"].(bool)
-		if !ok {
-			continue
-		}
-		if !pastTerm {
-			termCode, okCode := t["termCode"].(string)
-			shortDesc, okShort := t["shortDescription"].(string)
-			if okCode && okShort {
-				shortDesc = expandSeasonAbbreviation(shortDesc)
-				return &Term{
-					TermCode:         termCode,
-					ShortDescription: shortDesc,
-				}, nil
-			}
-		}
-	}
-
-	// Fallback: use the first term in the list.
-	if firstTerm, ok := terms[0].(map[string]interface{}); ok {
-		termCode, _ := firstTerm["termCode"].(string)
-		shortDesc, _ := firstTerm["shortDescription"].(string)
-		shortDesc = expandSeasonAbbreviation(shortDesc)
-		return &Term{
-			TermCode:         termCode,
-			ShortDescription: shortDesc,
-		}, nil
-	}
-
-	return nil, fmt.Errorf("term details not found")
-}
-
 // checkClassStatus checks whether a course (by its name) is available.
 func checkClassStatus(courseName string) (bool, error) {
-	// Fetch the dynamic term details.
-	term, err := fetchCurrentTerm()
-	if err != nil {
-		return false, err
+	// 1. Read from environment variables:
+	termCode := os.Getenv("TERM_CODE")
+	if termCode == "" {
+		termCode = "1262"
 	}
+	// We only need the code here for the API query; description is not used in the payload.
+	// But if you want it for logging, you can read it as well:
+	// termShortDesc := os.Getenv("TERM_SHORT_DESCRIPTION")
+	// if termShortDesc == "" {
+	//     termShortDesc = "Term 1262"
+	// }
 
 	client := resty.New()
 
 	payload := map[string]interface{}{
-		"selectedTerm": term.TermCode, // dynamically set term code
+		"selectedTerm": termCode,
 		"queryString":  courseName,
 		"filters": []map[string]interface{}{
 			{
@@ -145,7 +74,7 @@ func checkClassStatus(courseName string) (bool, error) {
 			"Content-Type": "application/json",
 			"User-Agent":   getRandomUserAgent(),
 			"Origin":       "https://public.enroll.wisc.edu",
-			"Referer":      fmt.Sprintf("https://public.enroll.wisc.edu/search?term=%s&keywords=%s", term.TermCode, courseName),
+			"Referer":      fmt.Sprintf("https://public.enroll.wisc.edu/search?term=%s&keywords=%s", termCode, courseName),
 		}).
 		SetBody(payload).
 		Post(apiURL)
@@ -203,7 +132,7 @@ func sendMailerSendEmail(recipientEmail, term, courseName, prevStatus, newStatus
 	}
 
 	recipients := []mailersend.Recipient{
-		{ Email: recipientEmail },
+		{Email: recipientEmail},
 	}
 
 	message := ms.Email.NewMessage()
@@ -266,12 +195,11 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		coursesToCheck = append(coursesToCheck, info)
 	}
 
-	// Fetch current term details once to include in notifications.
-	currentTerm, err := fetchCurrentTerm()
-	if err != nil {
-		log.Println("Error fetching current term:", err)
-		// Proceed without term info if needed.
-		currentTerm = &Term{ShortDescription: ""}
+	// 1. Get environment variable for short description
+	// (Term code not needed here unless you want to display it in the email body.)
+	termShortDesc := os.Getenv("TERM_SHORT_DESCRIPTION")
+	if termShortDesc == "" {
+		termShortDesc = "Term 1262"
 	}
 
 	// For each course, check availability and update the centralized course_availability table.
@@ -332,7 +260,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 					log.Println("Error scanning email:", err)
 					continue
 				}
-				if err := sendMailerSendEmail(email, currentTerm.ShortDescription, course.CourseName, prevStatus, newStatus); err != nil {
+				if err := sendMailerSendEmail(email, termShortDesc, course.CourseName, prevStatus, newStatus); err != nil {
 					log.Printf("Error sending email to %s: %v\n", email, err)
 				} else {
 					log.Printf("Notification sent to %s for course %s\n", email, course.CourseName)
