@@ -14,7 +14,8 @@ type Subscription struct {
 	CourseID          string `json:"courseId"`
 	CourseSubjectCode string `json:"courseSubjectCode"`
 	CourseName        string `json:"courseName"`
-	// You can add more fields if needed.
+	Credits           int    `json:"credits"`
+	Title             string `json:"title"`
 }
 
 // SubscriptionsResponse wraps the subscriptions array.
@@ -59,7 +60,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	// Query subscriptions for the user
 	// Assuming your subscriptions table uses a composite unique key (user_id, course_id, course_subject_code)
 	query := `
-		SELECT course_id, course_subject_code, course_name
+		SELECT course_id, course_subject_code, course_name, credits, title
 		FROM subscriptions
 		WHERE user_id = (SELECT id FROM users WHERE email = $1)
 	`
@@ -74,7 +75,13 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	var subscriptions []Subscription
 	for rows.Next() {
 		var sub Subscription
-		if err := rows.Scan(&sub.CourseID, &sub.CourseSubjectCode, &sub.CourseName); err != nil {
+		if err := rows.Scan(
+			&sub.CourseID,
+			&sub.CourseSubjectCode,
+			&sub.CourseName,
+			&sub.Credits,
+			&sub.Title,
+		); err != nil {
 			http.Error(w, "Failed to scan subscription", http.StatusInternalServerError)
 			log.Println("DB scan error:", err)
 			return

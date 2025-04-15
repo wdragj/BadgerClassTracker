@@ -17,6 +17,8 @@ type SubscriptionPayload struct {
 	CourseID          string `json:"courseId"`
 	CourseName        string `json:"courseName"`
 	CourseSubjectCode string `json:"courseSubjectCode"`
+	Credits           int    `json:"credits"`
+	Title             string `json:"title"`
 }
 
 func Handler(w http.ResponseWriter, r *http.Request) {
@@ -59,26 +61,34 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	// Since the last_checked column has been dropped, we only reference created_at.
 	query := `
 	INSERT INTO subscriptions (
-	  user_id, user_email, user_fullname, course_id, course_name, course_subject_code, created_at
+	  user_id, user_email, user_fullname, course_id, 
+	  course_name, course_subject_code, created_at,
+	  credits, title
 	)
 	VALUES (
-	  (SELECT id FROM users WHERE email=$1), $1, $2, $3, $4, $5, $6
+	  (SELECT id FROM users WHERE email=$1), 
+	  $1, $2, $3, 
+	  $4, $5, $6,
+	  $7, $8
 	)
 	ON CONFLICT (user_id, course_id, course_subject_code)
 	DO UPDATE SET
 	  user_fullname = EXCLUDED.user_fullname,
-	  course_name = EXCLUDED.course_name
+	  course_name = EXCLUDED.course_name,
+	  credits = EXCLUDED.credits,
+	  title = EXCLUDED.title
 	`
-
 	_, err = pool.Exec(
 		r.Context(),
 		query,
-		payload.UserEmail,         // $1: used to look up user_id & store user_email
+		payload.UserEmail,         // $1
 		payload.UserFullName,      // $2
 		payload.CourseID,          // $3
 		payload.CourseName,        // $4
 		payload.CourseSubjectCode, // $5
-		now,                       // $6: for created_at on insert
+		now,                       // $6 (for created_at)
+		payload.Credits,           // $7
+		payload.Title,             // $8
 	)
 	if err != nil {
 		http.Error(w, "Failed to subscribe", http.StatusInternalServerError)
