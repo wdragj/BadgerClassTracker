@@ -1,22 +1,24 @@
 package checkAvailability
 
 import (
-	"context"
+	// "context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"net/smtp"
 	"os"
-	"time"
+	"strings"
+	// "time"
 
 	"github.com/corpix/uarand"
 	"github.com/go-resty/resty/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/mailgun/mailgun-go/v4"
 )
 
 const apiURL = "https://public.enroll.wisc.edu/api/search/v1"
 
+// getRandomUserAgent returns a random user agent string.
 func getRandomUserAgent() string {
 	return uarand.GetRandom()
 }
@@ -29,7 +31,6 @@ type Term struct {
 
 // checkClassStatus checks whether a course (by its name) is available.
 func checkClassStatus(courseName string) (bool, error) {
-	// 1. Read from environment variables:
 	termCode := os.Getenv("TERM_CODE")
 	if termCode == "" {
 		termCode = "1262"
@@ -99,53 +100,45 @@ func checkClassStatus(courseName string) (bool, error) {
 	return false, nil
 }
 
-// sendMailgunEmail uses the Mailgun Go SDK to send an email notification.
-// The email will include the term info on the first line.
-func sendMailgunEmail(recipientEmail, term, courseName, prevStatus, newStatus string) error {
-	domain := os.Getenv("MAILGUN_DOMAIN") // e.g., "sandboxXXX.mailgun.org"
-	if domain == "" {
-		return fmt.Errorf("MAILGUN_DOMAIN not set")
+// sendGmailSMTP sends an email using Gmail’s SMTP servers.
+// It uses net/smtp with an App Password (GMAIL_SMTP_PASS) instead of your real Google password.
+func sendGmailSMTP(recipientEmail, term, courseName, prevStatus, newStatus string) error {
+	// Get your Gmail address and app password from environment variables
+	smtpEmail := os.Getenv("GMAIL_SMTP_EMAIL") // e.g., youremail@gmail.com
+	smtpPass := os.Getenv("GMAIL_SMTP_PASS")   // 16-character app password
+
+	if smtpEmail == "" || smtpPass == "" {
+		return fmt.Errorf("GMAIL_SMTP_EMAIL or GMAIL_SMTP_PASS not set in environment")
 	}
 
-	apiKey := os.Getenv("MAILGUN_API_KEY")
-	if apiKey == "" {
-		return fmt.Errorf("MAILGUN_API_KEY not set")
-	}
-
-	// Create a new Mailgun client
-	mg := mailgun.NewMailgun(domain, apiKey)
-
-	// Create a context with timeout.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	// Gmail SMTP details
+	smtpHost := "smtp.gmail.com"
+	smtpPort := "587"
 
 	subject := fmt.Sprintf("Course Update: %s is now %s", courseName, newStatus)
-	text := fmt.Sprintf("%s\n\n%s was previously %s.\nIt is now %s.\n\nThank you.", term, courseName, prevStatus, newStatus)
-	html := fmt.Sprintf("<p>%s<br><br>%s was previously <strong>%s</strong>.<br>It is now <strong>%s</strong>.<br><br>Thank you.</p>",
+	htmlBody := fmt.Sprintf("<p>%s<br><br>%s was previously <strong>%s</strong>.<br>It is now <strong>%s</strong>.<br><br>Thank you.</p>",
 		term, courseName, prevStatus, newStatus)
 
-	// Build the Mailgun message
-	message := mg.NewMessage(
-		// From
-		"Mailgun Sandbox <postmaster@"+domain+">",
-		// Subject
-		subject,
-		// Plaintext body
-		text,
-		// To
-		recipientEmail,
-	)
+	// Build the raw MIME message.
+	msg := strings.Join([]string{
+		"To: " + recipientEmail,
+		"From: " + smtpEmail,
+		"Subject: " + subject,
+		"MIME-Version: 1.0",
+		"Content-Type: text/html; charset=\"UTF-8\"",
+		"",
+		htmlBody,
+	}, "\r\n")
 
-	// Add HTML body
-	message.SetHtml(html)
+	// Set up authentication using your app password.
+	auth := smtp.PlainAuth("", smtpEmail, smtpPass, smtpHost)
 
-	// Send the message
-	_, id, err := mg.Send(ctx, message)
-	if err != nil {
+	// Actually send the email.
+	if err := smtp.SendMail(smtpHost+":"+smtpPort, auth, smtpEmail, []string{recipientEmail}, []byte(msg)); err != nil {
 		return err
 	}
 
-	log.Printf("Mailgun sent message with ID: %s\n", id)
+	log.Printf("Email sent to %s via Gmail SMTP\n", recipientEmail)
 	return nil
 }
 
@@ -261,8 +254,8 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 					log.Println("Error scanning email:", err)
 					continue
 				}
-				// Send the email using the Mailgun function
-				if err := sendMailgunEmail(email, termShortDesc, course.CourseName, prevStatus, newStatus); err != nil {
+				// Send the email using Gmail SMTP
+				if err := sendGmailSMTP(email, termShortDesc, course.CourseName, prevStatus, newStatus); err != nil {
 					log.Printf("Error sending email to %s: %v\n", email, err)
 				} else {
 					log.Printf("Notification sent to %s for course %s\n", email, course.CourseName)
